@@ -18,7 +18,29 @@ Open `http://localhost:8501` and click "Connect with Salesforce".
 
 ## Authentication
 
-### OAuth Login (Recommended – like n8n)
+### Microsoft Azure AD (Optional)
+
+**NEW:** The dashboard supports optional Azure AD / MSAL authentication to control who can access the dashboard.
+
+- When enabled, users must sign in with their Microsoft account **before** accessing the dashboard
+- Then they connect to Salesforce as usual
+- Perfect for enterprise deployments requiring centralized access control
+
+**Setup:** See [docs/AZURE_AD_SETUP.md](docs/AZURE_AD_SETUP.md) for complete configuration guide.
+
+**Quick Enable:**
+```bash
+# Add to .env after setting up Azure AD app registration
+AZURE_CLIENT_ID=your_azure_client_id
+AZURE_TENANT_ID=your_tenant_id
+AZURE_CLIENT_SECRET=your_azure_secret
+AZURE_REDIRECT_URI=http://localhost:8501
+
+# Optional: Restrict to specific domains
+AZURE_ALLOWED_DOMAINS=company.com
+```
+
+### Salesforce OAuth Login (Recommended)
 
 The dashboard supports **Salesforce OAuth** – users see a "Connect with Salesforce" button and sign in via the browser (no passwords in config).
 

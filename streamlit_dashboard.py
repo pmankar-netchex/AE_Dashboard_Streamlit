@@ -43,6 +43,18 @@ from src.dashboard_ui import (
     display_summary_metrics,
     display_insights,
 )
+from src.msal_auth import (
+    is_msal_configured,
+    is_authenticated,
+    get_authorization_url as get_msal_auth_url,
+    exchange_code_for_token,
+    get_user_info,
+    cache_user,
+    clear_user_cache,
+    render_login_screen as render_msal_login,
+    display_user_info,
+    check_user_authorization,
+)
 
 # Page configuration
 st.set_page_config(
@@ -226,8 +238,52 @@ def load_dashboard_data(sf, month, year):
 # ==============================================================================
 
 def main():
+    # --- MSAL Authentication (if configured) ---
+    if is_msal_configured():
+        # Handle MSAL callback
+        if st.query_params.get("code") and not st.query_params.get("state"):
+            # This is an MSAL callback (has code but no Salesforce state)
+            code = st.query_params.get("code")
+            code = code[0] if isinstance(code, list) else code
+            
+            try:
+                token_response = exchange_code_for_token(code)
+                user_info = get_user_info(token_response.get("access_token"))
+                cache_user(token_response, user_info)
+                st.query_params.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"MSAL authentication failed: {str(e)}")
+                st.query_params.clear()
+                st.stop()
+        
+        # Check if user is authenticated
+        if not is_authenticated():
+            st.title("📊 AE Ultimate Dashboard")
+            render_msal_login()
+            return
+        
+        # Check authorization (optional - uncomment and configure as needed)
+        allowed_domains = os.environ.get("AZURE_ALLOWED_DOMAINS", "").split(",")
+        allowed_domains = [d.strip() for d in allowed_domains if d.strip()]
+        
+        allowed_emails = os.environ.get("AZURE_ALLOWED_EMAILS", "").split(",")
+        allowed_emails = [e.strip() for e in allowed_emails if e.strip()]
+        
+        if allowed_domains or allowed_emails:
+            if not check_user_authorization(allowed_domains=allowed_domains or None, 
+                                           allowed_emails=allowed_emails or None):
+                st.title("📊 AE Ultimate Dashboard")
+                st.error("❌ Access Denied")
+                st.warning("Your account does not have permission to access this dashboard. Please contact your administrator.")
+                if st.button("🚪 Sign Out"):
+                    clear_user_cache()
+                    st.rerun()
+                st.stop()
+    
     # --- OAuth callback (user returning from Salesforce login) ---
-    if st.query_params.get("code"):
+    if st.query_params.get("code") and st.query_params.get("state"):
+        # Salesforce OAuth callback (has both code and state)
         if handle_oauth_callback():
             st.rerun()
         return
@@ -304,9 +360,13 @@ def main():
         with st.expander("🔧 Filter debug", expanded=False):
             st.write("**Values used for query**: ", f"month={p_month}, year={p_year}")
 
+    # Display MSAL user info in sidebar (if MSAL is enabled)
+    if is_msal_configured() and is_authenticated():
+        display_user_info()
+    
     # Disconnect button
     if "sf_oauth" in st.session_state:
-        if st.button("🚪 Disconnect"):
+        if st.button("🚪 Disconnect from Salesforce"):
             del st.session_state["sf_oauth"]
             clear_tokens()  # Also clear saved tokens
             st.rerun()
@@ -381,6 +441,8 @@ def main():
                         st.session_state['filter_managers'] = []
                     
                     default_mgr = st.session_state.get('filter_managers', all_managers)
+                    # Filter to only include values that exist in current options
+                    default_mgr = [m for m in default_mgr if m in all_managers]
                     
                     selected_managers = st.multiselect(
                         "Select managers",
@@ -416,6 +478,8 @@ def main():
                         st.session_state['filter_aes'] = []
                     
                     default_ae = st.session_state.get('filter_aes', all_aes)
+                    # Filter to only include values that exist in current options
+                    default_ae = [ae for ae in default_ae if ae in all_aes]
                     
                     selected_aes = st.multiselect(
                         "Select AEs",
