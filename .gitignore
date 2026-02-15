@@ -1,0 +1,39 @@
+# Streamlit
+.streamlit/config.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.local
+
+# OAuth tokens and credentials
+tokens/
+*.json.enc
+
+# Data files
+*.csv
+*.xlsx
+data/
