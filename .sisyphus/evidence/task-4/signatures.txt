@@ -1,0 +1,4 @@
+save_tokens(access_token: str, refresh_token: str, instance_url: str)
+load_tokens() -> dict
+clear_tokens()
+PASS: signatures match
