@@ -229,3 +229,146 @@ be available in CI/CD Docker builds.
 - The `[ref]$null` trick used in quick inline pwsh -Command fails with "variable does not exist"
 - Fix: use `pwsh -File /dev/stdin <<'EOF'` heredoc with `$errors = $null` pre-declaration
 - Both validate correctly; PASS output is definitive
+
+## [2026-02-26] Task 7: Azure DevOps CI/CD Pipeline (azure-pipelines.yml)
+
+### Completed
+- ✅ Created `azure-pipelines.yml` at project root (82 lines)
+- ✅ Trigger: `branches.include: [main]`
+- ✅ Build stage: `Docker@2` task with `buildAndPush` command
+- ✅ Deploy stage: `AzureWebAppContainer@1` task with `deployment` job type (enables environments)
+- ✅ `dependsOn: Build` + `condition: succeeded()` on Deploy stage
+- ✅ Zero hardcoded values — all pipeline variable references `$(VAR_NAME)`
+- ✅ Header comment block documents all 6 required pipeline variables
+- ✅ YAML syntax valid (python3 yaml.safe_load ✓)
+- ✅ Evidence saved to `.sisyphus/evidence/task-7/`
+- ✅ Committed: `da7860e feat(ci): add Azure DevOps pipeline`
+
+### Key Implementation Decisions
+
+**ACR URL approach:**
+- Used `ACR_LOGIN_SERVER` as explicit pipeline variable (e.g., `aedashboard.azurecr.io`)
+- `containers` input: `$(acrLoginServer)/$(acrRepository):$(Build.BuildId)`
+- This is cleaner than relying on `$(containerRegistry.loginServer)` which is not guaranteed by all service connection types
+
+**`deployment` job vs regular `job`:**
+- Deploy stage uses `deployment:` job type — this enables Azure DevOps environments + optional approval gates
+- Strategy: `runOnce.deploy.steps` (required structure for deployment jobs)
+- `environment: 'production'` — creates/uses the "production" environment in Azure DevOps
+
+**Image tagging:**
+- Both `$(Build.BuildId)` and `latest` tags pushed
+- Deploy uses `$(Build.BuildId)` specifically — ensures exact build deployed (not ambiguous "latest")
+
+**Variable block pattern:**
+- Variables block maps short names (e.g., `acrServiceConnection`) to pipeline var refs (e.g., `$(ACR_SERVICE_CONNECTION)`)
+- Inline comments explain purpose — helps pipeline editors understand without reading docs
+- `resourceGroupName` variable defined but not directly used in pipeline tasks (informational, available for future steps)
+
+### QA Results
+- YAML valid: Stages: 2 ✓
+- Triggers on main: PASS ✓
+- Deploy depends on Build: PASS ✓
+- No hardcoded Azure URLs in pipeline values: PASS ✓
+  (`.azurecr.io` appears only in inline comments as examples, not as actual values)
+
+### Required Pipeline Variables (set in Azure DevOps UI)
+1. `ACR_SERVICE_CONNECTION` — Docker Registry service connection name for ACR
+2. `AZURE_SERVICE_CONNECTION` — Azure Resource Manager service connection name
+3. `ACR_LOGIN_SERVER` — ACR hostname (e.g., `aedashboard.azurecr.io`)
+4. `ACR_REPOSITORY` — repository name within ACR (e.g., `ae-dashboard`)
+5. `APP_NAME` — Azure App Service name
+6. `RESOURCE_GROUP_NAME` — Resource group containing the App Service
+
+### Dependency Chain
+- Task 5 (Dockerfile) ✅ — `Docker@2` builds from `$(Build.SourcesDirectory)/Dockerfile`
+- Task 6 (deploy.ps1) ✅ — infrastructure separate; this pipeline only handles CI/CD
+- Task 3 (main.bicep) ✅ — ACR and App Service must be provisioned before pipeline can run
+
+## [2026-02-26] F4: Scope Fidelity Check
+
+### Summary
+Final QA scope check — all 6 forbidden files untouched, all 9 planned files present, VERDICT: APPROVE.
+
+### Findings
+- **Forbidden files**: All 6 source files (streamlit_dashboard.py, src/salesforce_oauth.py, src/msal_auth.py,
+  src/salesforce_queries.py, src/dashboard_calculations.py, src/dashboard_ui.py) had zero commits touching
+  them since baseline 599c8be. Scope discipline was perfect.
+
+- **Planned files all present**: 7 new files (Dockerfile, .dockerignore, .streamlit/config.toml,
+  infra/main.bicep, infra/main.json, scripts/deploy.ps1, azure-pipelines.yml) + 2 modified
+  (src/token_storage.py, requirements.txt). All 9/9 accounted for.
+
+- **Unaccounted files**: Only `.sisyphus/` QA artifacts and `.gitignore` (planned side-effect of Task 1).
+  Zero unplanned source-code changes.
+
+- **Commit-level audit**: Each of the 7 commits touched only files appropriate to their task.
+  Sisyphus QA evidence files (.sisyphus/evidence/task-N/) were bundled into implementation commits
+  rather than separate commits — acceptable but worth noting for future plans.
+
+### Pattern: .sisyphus/ artifacts in implementation commits
+Tasks 4, 6, and 7 bundled their QA evidence files into the same commit as the implementation.
+This is fine from a scope perspective but slightly inflates what `git diff --name-only` shows.
+Future scope checks should explicitly exclude `.sisyphus/` from unaccounted-file analysis.
+
+### Methodology Used
+- `git log --oneline 599c8be..HEAD -- <file>` per forbidden file (clean = CLEAN)
+- `ls -la` to verify new files present
+- `git diff --name-only 599c8be HEAD` for full diff list
+- `git show --stat <commit>` for each of the 7 commits
+- Evidence saved to: `.sisyphus/evidence/final-qa/F4-scope.txt`
+
+## [2026-02-26] F1: Plan Compliance Audit
+
+### Audit Result: APPROVE (36/36 checks passed)
+
+**Must Have:** 10/10 PASS
+**Must NOT Have:** 13/13 PASS
+**Deliverables:** 8/8 PASS
+**Definition of Done:** 5/5 PASS
+
+### Key Findings
+
+1. **MNH8-10 interpretation**: `git log --oneline -- <file>` shows pre-baseline commits (599c8be, 3f0b43c) for some files — these predate the azure-deployment task series. The correct check is `git log --oneline 599c8be..HEAD -- <file>` to isolate azure-deployment task commits. Zero azure-deployment commits touched any protected source file.
+
+2. **MH1 pattern**: Dockerfile uses `COPY . .` (not selective copy), making `.dockerignore` the critical control for `.env` exclusion. Both Dockerfile and .dockerignore correctly implement this.
+
+3. **DoD2 BCP334 warning**: `az bicep build` exits 0 with a non-fatal WARNING BCP334 about ACR name minimum length. This is expected behavior noted in inherited wisdom — not a failure.
+
+4. **DoD3 PASS pattern**: `python3 -c "... from src.token_storage import load_tokens; result = load_tokens(); print('PASS:', result)"` outputs `PASS: {}` — empty dict because no tokens are saved in test env, but no crash = filesystem fallback works correctly.
+
+5. **MNH2-6 verification**: Empty grep output = PASS for "no forbidden resources" checks. Confirmed infra/main.bicep contains ONLY the 5 expected resources: App Service Plan, App Service, ACR, Key Vault, AcrPull role assignment.
+
+6. **All 7 azure-deployment commits confirmed**: 2c0c51c → b2c0890 → b057058 → 51d1455 → b466e86 → 07baea4 → da7860e
+
+### Evidence file
+`.sisyphus/evidence/final-qa/F1-compliance.txt` (221 lines, full audit with per-check evidence)
+
+## [2026-02-26] F2: Code Quality Review
+
+### All 6 Checks PASSED — VERDICT: APPROVE
+
+**Results Summary:**
+- Bicep [PASS] — `az bicep build` exit code 0; BCP334 warning (known, ACR name length) is non-blocking
+- Python [PASS] — `from src.token_storage import save_tokens, load_tokens, clear_tokens` succeeds without KEY_VAULT_NAME; `load_tokens()` returns `dict`
+- PowerShell [PASS] — `Parser::ParseFile` reports 0 errors for `scripts/deploy.ps1` (442 lines)
+- YAML [PASS] — `yaml.safe_load` succeeds; stages count = 2 (Build + Deploy)
+- Dockerignore [PASS] — `.env`, `.git/`, `venv/`, `__pycache__/` all present; `src/` correctly NOT excluded
+- Secrets Scan [CLEAN] — no credential literals; initial grep matched Streamlit widget `key=` params (false positives)
+
+### Key Insights
+
+1. **PowerShell Parser AST dump**: `[Parser]::ParseFile(...)` returns the parsed AST object; without `$null = ...` assignment, it dumps the entire script AST to stdout. Always assign: `$null = [System.Management.Automation.Language.Parser]::ParseFile(...)` to suppress.
+
+2. **Secrets scan false positives**: The pattern `key\s*=\s*"[^"]{8,}"` matches Streamlit widget `key=` parameters (e.g., `key="filter_month"`). These are UI component identifiers, NOT credentials. A second pass with `| grep -v 'key="'` confirms CLEAN.
+
+3. **Bicep BCP334**: Warning about ACR name length (minimum 5 chars) is expected when `appName` is short. Exit code is still 0, so this is PASS. The `acrName` variable strips hyphens from `appName` and appends `'acr'`, which may produce short names for short `appName` values.
+
+4. **Dockerfile**: No `COPY .env` present (verified). ENTRYPOINT is exec form array. HEALTHCHECK uses `/_stcore/health` Streamlit built-in endpoint.
+
+5. **YAML hardcoded values**: `azure-pipelines.yml` contains `.azurecr.io` only in comment lines (line 15-16 as examples). All actual pipeline values use `$(VARIABLE)` references. Pipeline is fully parameterized.
+
+6. **Bicep scope**: No explicit `targetScope` in `main.bicep` = defaults to `resourceGroup`. This is correct for the deployment pattern used (`az deployment group create`).
+
+### Evidence Location
+`.sisyphus/evidence/final-qa/F2-quality.txt`

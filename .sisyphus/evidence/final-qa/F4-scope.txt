@@ -1,0 +1,109 @@
+F4: Scope Fidelity Check — Azure Deployment Plan
+Date: 2026-02-26
+Baseline commit: 599c8be
+Commits inspected: 599c8be..HEAD (7 commits)
+
+Commits since baseline:
+  da7860e feat(ci): add Azure DevOps pipeline
+  07baea4 feat(infra): add PowerShell deployment script
+  b466e86 feat: add Dockerfile for Azure App Service deployment
+  51d1455 feat(auth): add Key Vault adapter for token storage
+  b057058 feat(infra): add Bicep template for Azure App Service, ACR, Key Vault
+  b2c0890 chore: add Azure SDK dependencies
+  2c0c51c chore: add Docker prep files (.dockerignore, Streamlit config)
+
+================================================================================
+
+Forbidden Files [CLEAN/0 modified]:
+  - streamlit_dashboard.py        [CLEAN]
+  - src/salesforce_oauth.py       [CLEAN]
+  - src/msal_auth.py              [CLEAN]
+  - src/salesforce_queries.py     [CLEAN]
+  - src/dashboard_calculations.py [CLEAN]
+  - src/dashboard_ui.py           [CLEAN]
+
+Planned Files [9/9 present]:
+  - Dockerfile                    [PRESENT]   (added in b466e86)
+  - .dockerignore                 [PRESENT]   (added in 2c0c51c)
+  - .streamlit/config.toml        [PRESENT]   (added in 2c0c51c)
+  - infra/main.bicep              [PRESENT]   (added in b057058)
+  - infra/main.json               [PRESENT]   (added in b057058, auto-generated ARM JSON)
+  - scripts/deploy.ps1            [PRESENT]   (added in 07baea4)
+  - azure-pipelines.yml           [PRESENT]   (added in da7860e)
+  - src/token_storage.py          [MODIFIED]  (modified in 51d1455)
+  - requirements.txt              [MODIFIED]  (modified in b2c0890)
+
+Unaccounted Files [ACCEPTABLE/12 Sisyphus QA artifacts]:
+  NOTE: All unaccounted files are under .sisyphus/ — these are QA evidence and
+  notepad files created by the Sisyphus workflow tooling. They are NOT source
+  code changes and do NOT constitute scope violations.
+
+  Sisyphus QA artifacts (committed as part of task verification):
+  - .sisyphus/evidence/task-4/filesystem-fallback.txt  (committed in 51d1455)
+  - .sisyphus/evidence/task-4/import-no-kv.txt         (committed in 51d1455)
+  - .sisyphus/evidence/task-4/signatures.txt           (committed in 51d1455)
+  - .sisyphus/evidence/task-6/ps-envvars.txt           (committed in 07baea4)
+  - .sisyphus/evidence/task-6/ps-params.txt            (committed in 07baea4)
+  - .sisyphus/evidence/task-6/ps-syntax.txt            (committed in 07baea4)
+  - .sisyphus/notepads/azure-deployment/learnings.md   (committed in 07baea4)
+  - .sisyphus/evidence/task-7/no-hardcoded.txt         (committed in da7860e)
+  - .sisyphus/evidence/task-7/stage-deps.txt           (committed in da7860e)
+  - .sisyphus/evidence/task-7/trigger.txt              (committed in da7860e)
+  - .sisyphus/evidence/task-7/yaml-valid.txt           (committed in da7860e)
+  - .gitignore                                         (modified in 2c0c51c — removed
+                                                        .streamlit/config.toml exclusion
+                                                        line; planned and acceptable)
+
+  Source files NOT in plan that were changed: NONE
+
+================================================================================
+
+Per-Commit Scope Verification:
+  2c0c51c — chore: add Docker prep files
+    Files: .dockerignore, .gitignore, .streamlit/config.toml
+    Expected: .dockerignore + .streamlit/config.toml (new), .gitignore (planned side-effect)
+    PASS
+
+  b2c0890 — chore: add Azure SDK dependencies
+    Files: requirements.txt
+    Expected: requirements.txt
+    PASS
+
+  b057058 — feat(infra): add Bicep template
+    Files: infra/main.bicep, infra/main.json
+    Expected: infra/main.bicep + infra/main.json (auto-generated)
+    PASS
+
+  51d1455 — feat(auth): add Key Vault adapter for token storage
+    Files: src/token_storage.py, .sisyphus/evidence/task-4/{3 files}
+    Expected: src/token_storage.py (planned); .sisyphus/ files = QA artifacts
+    PASS
+
+  b466e86 — feat: add Dockerfile
+    Files: Dockerfile
+    Expected: Dockerfile
+    PASS
+
+  07baea4 — feat(infra): add PowerShell deployment script
+    Files: scripts/deploy.ps1, .sisyphus/evidence/task-6/{3 files},
+           .sisyphus/notepads/azure-deployment/learnings.md
+    Expected: scripts/deploy.ps1 (planned); .sisyphus/ files = QA artifacts
+    PASS
+
+  da7860e — feat(ci): add Azure DevOps pipeline
+    Files: azure-pipelines.yml, .sisyphus/evidence/task-7/{4 files}
+    Expected: azure-pipelines.yml (planned); .sisyphus/ files = QA artifacts
+    PASS
+
+================================================================================
+
+No test files added: CONFIRMED (no tests/ dir, no test_*.py files)
+
+================================================================================
+
+VERDICT: APPROVE
+
+All 6 forbidden files are untouched (0 commits touching them since baseline).
+All 9 planned files are present and accounted for.
+Zero unplanned source-code files were modified.
+All 7 commits are in scope; .sisyphus/ artifacts are expected QA workflow outputs.

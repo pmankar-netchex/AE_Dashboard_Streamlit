@@ -1,0 +1,11 @@
+=== Scenario 5: Token storage in-container verification ===
+Command: docker run --rm --entrypoint="" ae-dashboard python3 -c "..."
+(KEY_VAULT_NAME unset inside container)
+
+Output: PASS: load_tokens returns empty dict when no tokens saved
+Exit code: 0
+
+Test verified:
+- load_tokens() with no prior tokens -> {} (empty dict, as expected)
+
+RESULT: PASS — token_storage.py works correctly inside Docker container

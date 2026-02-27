@@ -1,0 +1,57 @@
+TASK 2: Add Azure SDK Dependencies
+===================================
+
+OBJECTIVE:
+Add azure-identity==1.15.0 and azure-keyvault-secrets==4.8.0 to requirements.txt
+
+COMPLETION STATUS: ✓ COMPLETE
+
+VERIFICATION CHECKLIST:
+======================
+
+[✓] requirements.txt contains azure-identity==1.15.0 (exact pin, own line)
+[✓] requirements.txt contains azure-keyvault-secrets==4.8.0 (exact pin, own line)
+[✓] All 7 original dependencies unchanged with exact same versions
+[✓] Total dependency count: 9 (7 original + 2 new)
+[✓] File format consistent: package==version per line, no inline comments
+[✓] Evidence saved to .sisyphus/evidence/task-2/
+[✓] Commit created: chore: add Azure SDK dependencies
+
+EVIDENCE FILES:
+===============
+- requirements-final.txt: Final state of requirements.txt
+- original-deps-verify.txt: Verification of all 7 original dependencies
+- pip-dryrun.txt: Dependency conflict analysis (no conflicts found)
+- TASK_COMPLETION_SUMMARY.txt: This file
+
+ORIGINAL DEPENDENCIES (VERIFIED UNCHANGED):
+============================================
+1. streamlit==1.31.0
+2. pandas==2.1.4
+3. simple-salesforce==1.12.5
+4. plotly==5.18.0
+5. python-dotenv==1.0.0
+6. msal==1.28.0
+7. requests==2.31.0
+
+NEW DEPENDENCIES ADDED:
+=======================
+8. azure-identity==1.15.0
+9. azure-keyvault-secrets==4.8.0
+
+COMMIT DETAILS:
+===============
+Hash: b2c0890c9875e2ace9f6985c35c7392db38d76ab
+Message: chore: add Azure SDK dependencies
+Author: Mike Pritchard <20865962+mpritchard2@users.noreply.github.com>
+Date: Thu Feb 26 17:57:34 2026 -0600
+Files changed: 1 (requirements.txt)
+Insertions: 2
+
+NOTES:
+======
+- azure-identity provides DefaultAzureCredential for managed identity authentication
+- azure-keyvault-secrets provides SecretClient for Key Vault read/write operations
+- These packages are required for Task 4 (token_storage.py) and Task 5 (Dockerfile)
+- No version conflicts detected with existing dependencies
+- All packages are stable releases from PyPI

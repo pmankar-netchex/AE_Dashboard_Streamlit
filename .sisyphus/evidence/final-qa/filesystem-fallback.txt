@@ -1,0 +1,14 @@
+=== Scenario 4: Token storage filesystem fallback (host) ===
+Command: python3 -c "..."
+(KEY_VAULT_NAME unset, tests save/load/clear via ~/.salesforce_tokens/)
+
+Output: PASS: filesystem fallback works
+Exit code: 0
+
+Tests verified:
+- save_tokens('test_at', 'test_rt', 'https://test.sf.com') -> success
+- load_tokens() -> {'access_token': 'test_at', 'refresh_token': 'test_rt', 'instance_url': 'https://test.sf.com'}
+- clear_tokens() -> success
+- load_tokens() after clear -> {} (empty dict)
+
+RESULT: PASS — filesystem fallback works without KEY_VAULT_NAME

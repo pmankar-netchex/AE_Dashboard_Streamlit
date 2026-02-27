@@ -1,0 +1,2 @@
+WARNING: /home/mpritchard/working/AE_Dashboard_Streamlit/infra/main.bicep(44,9) : Warning BCP334: The provided value can have a length as small as 3 and may be too short to assign to a target with a configured minimum length of 5. [https://aka.ms/bicep/core-diagnostics#BCP334]
+

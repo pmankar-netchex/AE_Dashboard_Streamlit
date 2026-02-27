@@ -1,0 +1,33 @@
+=== FINAL QA SUMMARY ===
+Date: 2026-02-26
+Image: ae-dashboard:latest
+Commit: (see: git log -1 --format='%H')
+
+--- SCENARIO RESULTS ---
+
+Scenario 1: Docker Build
+  Command: docker build -t ae-dashboard .
+  Result: PASS
+  Evidence: naming to docker.io/library/ae-dashboard:latest; exit 0
+
+Scenario 2: Container Start + Health
+  Command: docker run -d -p 8503:8501 --name ae-final-test ae-dashboard; sleep 45
+  Start: PASS
+  Health (/_stcore/health): PASS — returned 'ok'; exit 0
+  Serve (HTML): PASS — response contains '<!doctype html>'
+
+Scenario 3: .env NOT in Image
+  Command: docker run --rm --entrypoint="" ae-dashboard ls -la /app/.env
+  Result: PASS — 'ls: cannot access /app/.env: No such file or directory'; exit 2
+
+Scenario 4: Token Storage Filesystem Fallback (host)
+  Command: python3 token_storage test (no KEY_VAULT_NAME)
+  Result: PASS — save/load/clear all succeed via ~/.salesforce_tokens/
+
+Scenario 5: Token Storage In-Container
+  Command: docker run --rm --entrypoint="" ae-dashboard python3 ... load_tokens()
+  Result: PASS — load_tokens() returns {} when no tokens saved
+
+--- VERDICT ---
+
+Build [PASS] | Start [PASS] | Health [PASS] | Serve [PASS] | Tokens [PASS] | VERDICT: PASS
