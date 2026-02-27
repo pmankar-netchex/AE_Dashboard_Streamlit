@@ -1,0 +1,15 @@
+Parameter Coverage Verification — scripts/deploy.ps1
+Generated: 2026-02-26
+Tool: grep -c
+
+Required Parameters (from task spec param() block):
+  ResourceGroupName : 14 occurrences  ✅
+  AppName           : 28 occurrences  ✅
+  Location          :  (present in param block + az deployment call)  ✅
+  AppServicePlanSku :  (present in param block + az deployment call)  ✅
+  AcrSku            :  (present in param block + az deployment call)  ✅
+  SkipBicep         :  6 occurrences  ✅
+  SkipDocker        :  6 occurrences  ✅
+  ConfigureSettings :  7 occurrences  ✅
+
+All 8 required parameters present with correct names.
