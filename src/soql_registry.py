@@ -399,7 +399,6 @@ WHERE RecordType.Name = 'Sales Event'
   AND CreatedBy.UserRole.Name LIKE '%Sales Rep%'
   AND CreatedBy.UserRole.Name NOT LIKE '%Account Manager%'
   AND CreatedBy.UserRole.Name NOT LIKE '%SDR%'
-  AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -426,7 +425,6 @@ WHERE Meeting_Type__c = 'Prospect Meeting'
   AND Owner.UserRole.Name NOT LIKE '%Account Manager%'
   AND Owner.UserRole.Name NOT LIKE '%SDR%'
   AND Owner.UserRole.Name NOT LIKE '%Client Success%'
-  AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
