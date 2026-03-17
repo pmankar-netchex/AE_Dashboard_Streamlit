@@ -235,7 +235,8 @@ def render_dashboard_tab(sf):
 
     if st.session_state["dashboard_df"] is None or should_refresh:
         with st.spinner("Fetching data from Salesforce…"):
-            df = build_dashboard_dataframe(sf, params)
+            overrides = st.session_state.get("soql_overrides", {})
+            df = build_dashboard_dataframe(sf, params, overrides)
             st.session_state["dashboard_df"] = df
             st.session_state["fetch_ts"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 

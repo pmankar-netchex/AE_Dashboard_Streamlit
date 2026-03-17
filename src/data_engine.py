@@ -5,6 +5,7 @@ Data Engine — executes SOQL registry queries, builds unified DataFrame.
 Per-SOQL error isolation: if one query fails, only its column shows NaN.
 """
 from __future__ import annotations
+import logging
 import pandas as pd
 from typing import Any
 
@@ -25,29 +26,43 @@ def _run_query(sf, soql: str) -> Any:
     return None
 
 
-def fetch_column(sf, entry: SOQLEntry, params: dict) -> tuple[str, Any]:
+def fetch_column(sf, entry: SOQLEntry, params: dict, overrides: dict | None = None) -> tuple[str, Any]:
     """
     Execute one SOQL entry and return (col_id, value).
     On failure returns (col_id, None) — per-SOQL error isolation.
     """
     if entry.computed or entry.blocked:
         return entry.col_id, None
-    soql = build_query(entry, params)
+    # Use override template if available
+    if overrides and entry.col_id in overrides:
+        effective_entry = SOQLEntry(
+            col_id=entry.col_id,
+            display_name=entry.display_name,
+            section=entry.section,
+            description=entry.description,
+            template=overrides[entry.col_id],
+            time_filter=entry.time_filter,
+            aggregation=entry.aggregation,
+        )
+    else:
+        effective_entry = entry
+    soql = build_query(effective_entry, params)
     try:
         val = _run_query(sf, soql)
         return entry.col_id, val
-    except Exception:
+    except Exception as exc:
+        logging.warning("SOQL failed for %s: %s", entry.col_id, exc)
         return entry.col_id, None
 
 
-def fetch_all_columns(sf, params: dict) -> dict[str, Any]:
+def fetch_all_columns(sf, params: dict, overrides: dict | None = None) -> dict[str, Any]:
     """
     Run every non-computed, non-blocked SOQL and return {col_id: value}.
     Per-query error isolation: failures become None for that column only.
     """
     results: dict[str, Any] = {}
     for entry in ALL_COLUMNS:
-        col_id, val = fetch_column(sf, entry, params)
+        col_id, val = fetch_column(sf, entry, params, overrides)
         results[col_id] = val
 
     # Compute derived columns [spec: S1-COL-E = D/C, S1-COL-H = G/F]
@@ -100,7 +115,7 @@ def build_ae_list(sf, params: dict) -> list[dict]:
         return []
 
 
-def build_dashboard_dataframe(sf, params: dict) -> pd.DataFrame:
+def build_dashboard_dataframe(sf, params: dict, overrides: dict | None = None) -> pd.DataFrame:
     """
     Build the unified DataFrame with one row per AE and columns C–AD.
     [spec: Step 5]
@@ -111,12 +126,8 @@ def build_dashboard_dataframe(sf, params: dict) -> pd.DataFrame:
 
     rows = []
     for ae in ae_list:
-        ae_params = {
-            **params,
-            "ae_user_id": ae["Id"],
-            "ae_email": ae["Email"],
-        }
-        col_values = fetch_all_columns(sf, ae_params)
+        ae_params = {**params, "ae_user_id": ae["Id"], "ae_email": ae["Email"]}
+        col_values = fetch_all_columns(sf, ae_params, overrides)
         row = {"AE Name": ae["Name"], "AE Email": ae["Email"]}
         for entry in ALL_COLUMNS:
             row[entry.col_id] = col_values.get(entry.col_id)
@@ -130,17 +141,19 @@ def get_managers_list(sf) -> list[str]:
     """Get distinct manager names for the Manager filter."""
     try:
         result = sf.query("""
-            SELECT Manager.Name mgr
+            SELECT Id, Manager.Name
             FROM User
             WHERE IsActive = true
-            AND Manager.Name != null
+            AND ManagerId != null
             AND UserRole.Name LIKE '%Sales Rep%'
             ORDER BY Manager.Name
+            LIMIT 500
         """)
         seen = set()
         managers = []
         for r in result.get("records", []):
-            name = r.get("mgr")
+            manager_obj = r.get("Manager")
+            name = manager_obj.get("Name") if isinstance(manager_obj, dict) else None
             if name and name not in seen:
                 seen.add(name)
                 managers.append(name)
