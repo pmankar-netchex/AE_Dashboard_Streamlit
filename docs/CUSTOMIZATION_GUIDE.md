@@ -1,205 +1,195 @@
 # Dashboard Customization Guide
 
-The dashboard is modularized for easy customization. Each file has a specific purpose.
+## Editing SOQL Queries
 
-## File Structure
+All metric queries are defined in `src/soql_registry.py` and can be edited live via the **SOQL Management tab** in the dashboard UI.
 
+### Via the UI (recommended)
+
+1. Open the dashboard → **SOQL Management** tab
+2. Expand the column you want to edit (e.g. `[S1-COL-M] Total Closed Won`)
+3. Edit the SOQL in the text area
+4. Click **Test** — the query is executed against your Salesforce org; errors are shown inline
+5. If the test passes, click **Save**
+6. Click **Refresh Dashboard with Updated Queries** to apply
+
+Saved overrides persist for the current session. To make them permanent, copy the edited query back into `src/soql_registry.py`.
+
+### Via code
+
+Edit the `template` string of the relevant `SOQLEntry` in `src/soql_registry.py`.
+
+**Rules:**
+- Never change the filter logic — only parameterize values using `{placeholders}`
+- Available placeholders: `{owner_clause}`, `{ae_email_clause}`, `{time_start}`, `{time_end}`, `{time_start_date}`, `{time_end_date}`, `{fiscal_year_start}`, `{this_month_start}`, `{this_month_end}`, `{next_month_start}`, `{next_month_end}`
+- Columns with `time_filter=False` must NOT use `{time_start}`/`{time_end}` — they use fixed windows
+
+### Common query edits
+
+#### Change "Closed Won" stage name
+
+In `S1_COL_D`, `S1_COL_G`, `S1_COL_M`:
+```sql
+-- Before
+WHERE StageName = 'Closed Won'
+
+-- After (match your org's stage name)
+WHERE StageName = 'Closed/Won'
 ```
-streamlit_dashboard.py          Main app (OAuth, flow control)
-├── src/salesforce_oauth.py     OAuth login flow
-├── src/salesforce_queries.py   ⚙️ SOQL queries by entity
-├── src/dashboard_calculations.py  ⚙️ Business logic & formulas
-└── src/dashboard_ui.py         ⚙️ Display & styling
+
+#### Change Channel Partner types
+
+In `S4_COL_X`, `S4_COL_Y`, `S4_COL_Z`, `S4_COL_AA` — edit the `Type__c IN (...)` list:
+```sql
+AND Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
+                'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant')
 ```
 
-Files marked with ⚙️ contain customization points documented below.
+#### Change fiscal year start month
+
+In `src/meta_filters.py`:
+```python
+FISCAL_YEAR_START_MONTH = 4  # April fiscal year
+```
 
 ---
 
-## Customize SOQL Queries → `src/salesforce_queries.py`
+## Adding a New Metric Column
 
-All Salesforce queries are in this file, organized by entity.
-
-### Change Closed Won Stage Name
+1. Add a new `SOQLEntry` in `src/soql_registry.py`:
 
 ```python
-# Line 79
-AND StageName = 'Closed Won'
+MY_NEW_COL = SOQLEntry(
+    col_id="S1-COL-NEW",
+    display_name="My New Metric",
+    section="Pipeline & Quota",
+    description="What this measures.",
+    aggregation="COUNT(Id)",
+    time_filter=True,
+    template="""
+SELECT COUNT(Id) total
+FROM Opportunity
+WHERE {owner_clause}
+  AND CreatedDate >= {time_start}
+  AND CreatedDate <= {time_end}
+  AND RecordType.Name = 'Enterprise'
+""",
+)
 ```
 
-Change to your org's stage name: `'Won'`, `'Closed-Won'`, etc.
+2. Add it to `ALL_COLUMNS` in the right position.
 
-### Filter Users by Profile/Role
+3. If it needs currency or percent formatting, add its `col_id` to `CURRENCY_COLS` or `PERCENT_COLS` in `src/dashboard_ui.py`.
 
-```python
-# Line 23 - Add after Monthly_Quota__c != null
-AND Profile.Name LIKE '%Sales%'
-# Or:
-AND UserRole.Name LIKE '%AE%'
-```
-
-### Change Meeting Keywords
-
-```python
-# Line 143
-AND (Subject LIKE '%meeting%' OR Subject LIKE '%call%' OR Subject LIKE '%demo%')
-```
-
-Add your keywords: `'%discovery%'`, `'%follow-up%'`, etc.
-
-### Add Custom Fields
-
-```python
-# Line 19 - User query
-SELECT Id, Name, Monthly_Quota__c, Pipeline_Coverage_Ratio__c, Region__c, Team__c
-```
-
-### Filter by RecordType
-
-```python
-# Line 80 - Add to Opportunity query
-AND RecordType.Name = 'Enterprise'
-```
-
-### Exclude Recurring Meetings
-
-```python
-# Line 143 - Add to Event query
-AND IsRecurrence = false
-```
-
-### Minimum Opportunity Amount
-
-```python
-# Line 80 - Add to Opportunity query
-AND Amount > 1000
-```
-
-**See comments in `salesforce_queries.py` for more examples.**
+4. Add a tooltip entry to the `TOOLTIPS` dict in `src/dashboard_ui.py`.
 
 ---
 
-## Customize Calculations → `src/dashboard_calculations.py`
+## Changing the Sidebar Filters
 
-Business logic and formulas.
+### Add a new time period preset
 
-### Change Quota Calculation
-
+In `streamlit_dashboard.py` — extend the selectbox list:
 ```python
-# Line 55
-remainder = monthly_quota - closed_won
+time_presets = ["Last Week", "This Week", "Last Month", "This Month", "Last Quarter", "Custom"]
 ```
 
-Change to: `remainder = max(0, monthly_quota - closed_won)` (never negative).
-
-### Adjust Pipeline Coverage Formula
-
+Then add the resolver in `src/meta_filters.py`:
 ```python
-# Line 56
-pipeline_should_have = remainder * pipeline_coverage_ratio
+def last_quarter_range() -> tuple[date, date]:
+    ...
+
+mapping = {
+    ...
+    "Last Quarter": last_quarter_range,
+}
 ```
 
-Customize based on your methodology.
+### Filter AEs by a custom field (e.g. Region)
 
-### Update Meetings Needed Formula
-
-```python
-# Lines 17-35
-def calculate_meetings_needed(remaining_quota, avg_deal_size=5000, win_rate=0.20):
-    deals_needed = remaining_quota / avg_deal_size
-    meetings_needed = deals_needed / win_rate
-    return int(meetings_needed)
-```
-
-Change defaults or the entire formula.
-
-### Add More Columns
-
-```python
-# Line 63 - In dashboard_data.append()
-'Manager': row.get('Manager__r', {}).get('Name', 'N/A'),
-'Region': row.get('Region__c', 'N/A'),
-```
-
-**See comments in `dashboard_calculations.py` for more.**
+In `src/data_engine.py`, extend `get_ae_names_list()` to include region, then add a Region selectbox to `render_sidebar_filters()` in `streamlit_dashboard.py`.
 
 ---
 
-## Customize UI → `src/dashboard_ui.py`
+## Changing the UI
 
-Display formatting and styling.
+### Dashboard colors / CSS
 
-### Change Dashboard Colors
-
+In `src/dashboard_ui.py`, edit `apply_custom_css()`:
 ```python
-# Lines 13-31
-h1 { color: #1f77b4; }  # Change title color
-.oauth-btn { background: #00a1e0; }  # Change button color
+st.markdown("""
+<style>
+/* Change table header color */
+.stDataFrame thead { background-color: #1f2937; color: white; }
+</style>
+""", unsafe_allow_html=True)
 ```
 
-### Update Currency Format
+### Add a KPI widget
 
+In `src/dashboard_ui.py`, extend the `kpis` list in `display_kpi_widgets()`:
 ```python
-# Line 69
-col: '${:,.0f}' for col in currency_cols
+kpis = [
+    ...
+    ("My New Metric", "S1-COL-NEW", fmt_number, False),
+]
+```
+Tuple format: `(label, col_id, formatter_fn, is_average)`.
+
+### Add a chart
+
+In `src/dashboard_ui.py`, extend `display_charts()`:
+```python
+with col2:
+    if "S1-COL-N" in df.columns:
+        chart_df = df[["AE Name", "S1-COL-N"]].copy()
+        chart_df["S1-COL-N"] = pd.to_numeric(chart_df["S1-COL-N"], errors="coerce")
+        fig = px.bar(chart_df, x="AE Name", y="S1-COL-N", title="Closed Lost by AE")
+        st.plotly_chart(fig, use_container_width=True)
 ```
 
-Change to: `'${:,.2f}'` for cents, `'£{:,.0f}'` for pounds, etc.
+### Change currency format
 
-### Add More Metrics
-
+In `src/dashboard_ui.py`:
 ```python
-# In display_summary_metrics(), after col4:
-with col5:
-    avg_attainment = df['Closed Won'].sum() / df['Monthly Quota'].sum()
-    st.metric("Avg Attainment", f"{avg_attainment:.1%}")
+def fmt_currency(val) -> str:
+    ...
+    return f"£{val:,.0f}"   # Switch to GBP
+    # return f"${val:,.2f}" # Show cents
 ```
-
-### Add Charts
-
-```python
-# In display_insights() or main
-import plotly.express as px
-fig = px.bar(df, x='AE Name', y='Closed Won', title='Closed Won by AE')
-st.plotly_chart(fig)
-```
-
-### Conditional Formatting
-
-```python
-# In style_dataframe()
-def highlight_high_attainment(val):
-    if val > 100: return 'background-color: #ccffcc'
-    if val < 50: return 'background-color: #ffcccc'
-    return ''
-```
-
-**See comments in `dashboard_ui.py` for more.**
 
 ---
 
-## Quick Reference
+## Authentication
 
-| What to customize | File | Section |
-|-------------------|------|---------|
-| Stage names | `src/salesforce_queries.py` | Line 79 |
-| User filters | `src/salesforce_queries.py` | Line 23 |
-| Meeting keywords | `src/salesforce_queries.py` | Line 143 |
-| Quota formula | `src/dashboard_calculations.py` | Line 55 |
-| Meetings needed | `src/dashboard_calculations.py` | Line 17 |
-| Colors/CSS | `src/dashboard_ui.py` | Line 13 |
-| Currency format | `src/dashboard_ui.py` | Line 69 |
-| Metrics shown | `src/dashboard_ui.py` | Line 99 |
-| Insights/charts | `src/dashboard_ui.py` | Line 121 |
+### Enable Azure AD (MSAL) — optional
+
+Add to `.env`:
+```bash
+AZURE_CLIENT_ID=your_client_id
+AZURE_TENANT_ID=your_tenant_id
+AZURE_CLIENT_SECRET=your_secret
+AZURE_REDIRECT_URI=http://localhost:8501
+```
+
+See [AZURE_AD_SETUP.md](AZURE_AD_SETUP.md) for full setup steps.
+
+### Add username/password Salesforce auth (fallback)
+
+In `.env` (used only if OAuth tokens are unavailable):
+```bash
+SALESFORCE_USERNAME=user@company.com
+SALESFORCE_PASSWORD=yourpassword
+SALESFORCE_SECURITY_TOKEN=yourtoken
+```
 
 ---
 
 ## Testing Changes
 
 After editing any file:
-
 ```bash
 ./scripts/run.sh
 ```
 
-Changes are applied immediately (Streamlit auto-reloads).
+Streamlit auto-reloads on file save. For query changes, use the SOQL Management tab's Test button to validate before saving.
