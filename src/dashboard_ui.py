@@ -1,329 +1,253 @@
 """
-Dashboard UI Components
-Formatting, styling, and display utilities.
+Dashboard UI components.
+[spec: Section B]
 """
+from __future__ import annotations
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+
+from src.soql_registry import ALL_COLUMNS, SECTIONS, COLUMN_BY_ID
 
 
-# ==============================================================================
-# CSS STYLES
-# ==============================================================================
+SECTION_DISPLAY_NAMES = {
+    "Pipeline & Quota": "Pipeline Generated",
+    "Self-Gen Pipeline Creation": "Self Gen Pipeline Creation (not channel partners – prospects)",
+    "SDR Activity": "SDR Activity for This Rep",
+    "Channel Partners": "Channel Partners",
+    "Marketing": "Marketing",
+}
+
+CURRENCY_COLS = {
+    "S1-COL-C", "S1-COL-D", "S1-COL-F", "S1-COL-G",
+    "S1-COL-I", "S1-COL-J", "S1-COL-L", "S1-COL-M", "S1-COL-N",
+}
+PERCENT_COLS = {"S1-COL-E", "S1-COL-H"}
+
+TOOLTIPS: dict[str, str] = {
+    "S1-COL-C": "Quota YTD: SUM(ForecastingQuota.QuotaAmount) from fiscal year start to today. Time-filter immune.",
+    "S1-COL-D": "Bookings YTD: SUM(Opportunity.Amount) where StageName='Closed Won', fiscal year to date. Time-filter immune.",
+    "S1-COL-E": "YTD Quota Attainment %: Bookings YTD / Quota YTD (computed, no SOQL). Time-filter immune.",
+    "S1-COL-F": "Quota This Month: SUM(ForecastingQuota.QuotaAmount) for THIS_MONTH. Time-filter immune.",
+    "S1-COL-G": "Bookings This Month: SUM(Opportunity.Amount) closed won this month. Time-filter immune.",
+    "S1-COL-H": "MTD Quota Attainment %: Bookings This Month / Quota This Month (computed). Time-filter immune.",
+    "S1-COL-I": "Open Pipeline (This Month): SUM(Opportunity.Amount) IsClosed=false, CloseDate=THIS_MONTH. Time-filter immune.",
+    "S1-COL-J": "Open Pipeline (Next Month): SUM(Opportunity.Amount) IsClosed=false, CloseDate=NEXT_MONTH. Time-filter immune.",
+    "S1-COL-K": "# Opportunities Created: COUNT(Opportunity.Id) in selected time period.",
+    "S1-COL-L": "Pipeline $ Created: SUM(Opportunity.Amount) by CreatedDate in selected period.",
+    "S1-COL-M": "Total Closed Won: SUM(Opportunity.Amount) StageName='Closed Won' in selected period.",
+    "S1-COL-N": "Total Closed Lost: SUM(Opportunity.Amount) StageName='Closed Lost' in selected period.",
+    "S2-COL-O": "Unique Email Recipients: COUNT_DISTINCT(Task.WhoId) emails sent by Sales Rep (not AM/SDR) to prospects.",
+    "S2-COL-P": "Unique Call Recipients: COUNT_DISTINCT(Task.WhoId) calls made by Sales Rep (not AM/SDR) to prospects.",
+    "S2-COL-Q": "Unique Voicemail Recipients: BLOCKED — voicemail field pending confirmation.",
+    "S2-COL-R": "Unique Accts w/ Foot Canvass: COUNT_DISTINCT(Event.WhatId) prospect meetings with Meeting_Specifics__c='Foot Canvass'.",
+    "S2-COL-S": "Unique Accts w/ Net New Mtgs: COUNT_DISTINCT(Event.WhatId) prospect meetings with Meeting_Specifics__c='Net New'.",
+    "S3-COL-T": "SDR Unique Emails: COUNT_DISTINCT(Task.WhoId) emails sent by SDRs linked to this AE via AEEmail__c.",
+    "S3-COL-U": "SDR Unique Calls: COUNT_DISTINCT(Task.WhoId) calls made by SDRs linked to this AE.",
+    "S3-COL-V": "SDR Unique Mtgs Scheduled: COUNT(Event.Id) net-new prospect meetings with Sales Rep as creator.",
+    "S3-COL-W": "SDR Unique Mtgs Held: COUNT(Event.Id) net-new prospect meetings created by SDR and owned by Sales Rep.",
+    "S4-COL-X": "CP Unique Emails: COUNT_DISTINCT(Task.WhoId) emails to channel partners. Excludes HubSpot, inbound, Gong, Cases.",
+    "S4-COL-Y": "CP Unique Calls: COUNT_DISTINCT(Task.WhoId) calls to channel partners. Same exclusions as emails.",
+    "S4-COL-Z": "CP Mtgs Scheduled: COUNT(Event.Id) channel partner meetings with status='Scheduled'.",
+    "S4-COL-AA": "CP Mtgs Held: COUNT(Event.Id) channel partner meetings with status LIKE 'Attended%'.",
+    "S5-COL-AB": "Mtgs from Events: BLOCKED — Source__c field values pending confirmation.",
+    "S5-COL-AC": "Mtgs from Inbound: BLOCKED — Source__c field values pending confirmation.",
+    "S5-COL-AD": "Mtgs from Other Marketing: BLOCKED — Source__c field values pending confirmation.",
+}
+
 
 def apply_custom_css():
-    """Apply custom CSS for the dashboard."""
     st.markdown("""
-        <style>
-        .main { padding: 0rem 1rem; }
-        h1 { color: #1f77b4; padding-bottom: 1rem; }
-        .oauth-login-box {
-            max-width: 420px; margin: 4rem auto; padding: 2.5rem;
-            background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;
-            text-align: center; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        }
-        .oauth-login-box h2 { color: #1e293b; margin-bottom: 0.5rem; }
-        .oauth-login-box p { color: #64748b; margin-bottom: 1.5rem; font-size: 0.95rem; }
-        .oauth-btn {
-            display: inline-block; padding: 12px 24px; background: #00a1e0;
-            color: white !important; text-decoration: none; border-radius: 8px;
-            font-weight: 600; font-size: 1rem;
-        }
-        .oauth-btn:hover { background: #0086b8; }
-
-        /* Dashboard table */
-        .ae-table-wrap { overflow: auto; margin: 1rem 0; max-height: 500px; }
-        .ae-table {
-            border-collapse: collapse; width: 100%;
-            font-size: 0.82rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
-        .ae-table th, .ae-table td {
-            padding: 7px 10px; text-align: right; white-space: nowrap;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        .ae-table td:first-child, .ae-table th:first-child { text-align: left; }
-        .ae-table .super-header th {
-            position: sticky; top: 0; z-index: 2;
-            text-align: center; font-weight: 700; font-size: 0.78rem;
-            text-transform: uppercase; letter-spacing: 0.04em;
-            color: #fff; padding: 6px 10px; border: none;
-            box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);
-        }
-        .ae-table .sub-header th {
-            position: sticky; top: 32px; z-index: 2;
-            background: #f8fafc; font-weight: 600; color: #475569;
-            font-size: 0.75rem; border-bottom: 2px solid #cbd5e1;
-            box-shadow: 0 2px 2px -1px rgba(0,0,0,0.06);
-        }
-        .ae-table .ae-name { font-weight: 600; color: #1e293b; }
-        .ae-table tbody tr:nth-child(even) { background: #f9fafb; }
-        .ae-table tbody tr:hover { background: #eff6ff; }
-        .ae-table .ae-name { font-weight: 600; color: #1e293b; }
-        .ae-table .negative { color: #dc2626; font-weight: 600; }
-        .ae-table .positive { color: #16a34a; font-weight: 600; }
-
-        .grp-ae    { background: #334155; }
-        .grp-quota { background: #1d4ed8; }
-        .grp-pipe  { background: #7c3aed; }
-        .grp-act   { background: #0891b2; }
-        .grp-meet  { background: #059669; }
-        </style>
-        """, unsafe_allow_html=True)
+    <style>
+    .metric-card { background: #f0f2f6; border-radius: 8px; padding: 12px; }
+    .section-header { font-size: 1.1em; font-weight: 700; color: #1f2937;
+                      border-bottom: 2px solid #3b82f6; padding-bottom: 4px; margin-bottom: 8px; }
+    .blocked-col { color: #9ca3af; font-style: italic; }
+    </style>
+    """, unsafe_allow_html=True)
 
 
-# ==============================================================================
-# COLUMN DEFINITIONS
-# ==============================================================================
-
-COLUMN_ORDER = [
-    'AE Name',
-    'Manager Name',
-    'Forecast Amount', 'Quota Amount', 'Percent to Quota (%)',
-    'Closed Won', 'Remainder', 'Pipeline Coverage Ratio',
-    'Pipeline You Should Have', 'Open Pipeline with CW Date in Month', 'Pipeline Gap',
-    'Activity Email', 'Activity Phone', 'Activity Total',
-    'Meetings Needed', 'Meetings Scheduled', 'Meeting Gap',
-]
+def fmt_currency(val) -> str:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return "—"
+    return f"${val:,.0f}"
 
 
-def prepare_display_df(df):
+def fmt_percent(val) -> str:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return "—"
+    return f"{val:.1%}"
+
+
+def fmt_number(val) -> str:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return "—"
+    return f"{int(val):,}"
+
+
+def display_kpi_widgets(df: pd.DataFrame):
+    """Top-of-page KPI widgets showing aggregate totals. [spec: B.1]"""
+    if df.empty:
+        return
+    st.markdown("### Key Performance Indicators")
+    cols = st.columns(5)
+    kpis = [
+        ("Bookings YTD", "S1-COL-D", fmt_currency, False),
+        ("Quota YTD", "S1-COL-C", fmt_currency, False),
+        ("MTD Attainment (avg)", "S1-COL-H", fmt_percent, True),
+        ("Open Pipeline (This Mo)", "S1-COL-I", fmt_currency, False),
+        ("Closed Won (Period)", "S1-COL-M", fmt_currency, False),
+    ]
+    for i, (label, col_id, formatter, is_avg) in enumerate(kpis):
+        if col_id in df.columns:
+            numeric = pd.to_numeric(df[col_id], errors="coerce")
+            val = numeric.mean() if is_avg else numeric.sum()
+            cols[i].metric(label, formatter(val))
+
+
+def build_display_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Format raw numeric DataFrame into display-ready strings."""
+    out = df[["AE Name"]].copy()
+    for entry in ALL_COLUMNS:
+        col = entry.col_id
+        if col not in df.columns:
+            out[entry.display_name] = "—"
+            continue
+        if entry.blocked:
+            out[entry.display_name] = "Pending"
+            continue
+        if col in CURRENCY_COLS:
+            out[entry.display_name] = df[col].apply(fmt_currency)
+        elif col in PERCENT_COLS:
+            out[entry.display_name] = df[col].apply(fmt_percent)
+        else:
+            out[entry.display_name] = df[col].apply(fmt_number)
+    return out
+
+
+def display_dashboard_table(df: pd.DataFrame):
     """
-    Prepare the dataframe for st.dataframe display.
-    - Replaces -99 ratio with None
-    - Reorders columns to the canonical order
+    Main data table with section grouping, search, sort, pagination, tooltips.
+    [spec: B.1, B.2, B.6]
     """
     if df.empty:
-        return df
-    out = df.copy()
-    if 'Pipeline Coverage Ratio' in out.columns:
-        import numpy as np
-        out['Pipeline Coverage Ratio'] = out['Pipeline Coverage Ratio'].replace(-99, np.nan)
-    ordered = [c for c in COLUMN_ORDER if c in out.columns]
-    extra = [c for c in out.columns if c not in ordered]
-    return out[ordered + extra]
-
-
-def style_negative_gaps(df):
-    """
-    Apply styling to highlight negative gaps in red AND format all columns.
-    Returns a pandas Styler object with both formatting and conditional styling.
-    """
-    def highlight_negative(val):
-        """Return red color for negative values."""
-        try:
-            if pd.isna(val):
-                return ''
-            if float(val) < 0:
-                return 'color: #dc2626; font-weight: 600;'
-            return ''
-        except (ValueError, TypeError):
-            return ''
-    
-    # Start with styling
-    styled = df.style
-    
-    # Apply red highlighting to gap columns (use map for newer pandas, applymap for older)
-    try:
-        if 'Pipeline Gap' in df.columns:
-            styled = styled.map(highlight_negative, subset=['Pipeline Gap'])
-        if 'Meeting Gap' in df.columns:
-            styled = styled.map(highlight_negative, subset=['Meeting Gap'])
-    except AttributeError:
-        # Fallback to applymap for older pandas versions
-        if 'Pipeline Gap' in df.columns:
-            styled = styled.applymap(highlight_negative, subset=['Pipeline Gap'])
-        if 'Meeting Gap' in df.columns:
-            styled = styled.applymap(highlight_negative, subset=['Meeting Gap'])
-    
-    # Apply formatting to all columns
-    format_dict = {}
-    
-    # Dollar columns
-    dollar_cols = [
-        'Forecast Amount', 'Quota Amount', 'Closed Won', 'Remainder',
-        'Pipeline You Should Have', 'Open Pipeline with CW Date in Month', 'Pipeline Gap'
-    ]
-    for col in dollar_cols:
-        if col in df.columns:
-            format_dict[col] = '${:,.0f}'
-    
-    # Percentage columns
-    if 'Percent to Quota (%)' in df.columns:
-        format_dict['Percent to Quota (%)'] = '{:.1f}%'
-    
-    # Ratio columns
-    if 'Pipeline Coverage Ratio' in df.columns:
-        format_dict['Pipeline Coverage Ratio'] = '{:.1f}x'
-    
-    # Integer columns
-    int_cols = [
-        'Activity Email', 'Activity Phone', 'Activity Total',
-        'Meetings Needed', 'Meetings Scheduled', 'Meeting Gap'
-    ]
-    for col in int_cols:
-        if col in df.columns:
-            format_dict[col] = '{:.0f}'
-    
-    # Apply all formatting
-    styled = styled.format(format_dict, na_rep='-')
-    
-    return styled
-
-
-def get_column_config(df):
-    """
-    Build a column_config dict for st.dataframe.
-    Provides column labels (formatting is handled by Styler for proper red highlighting).
-    """
-    config = {}
-
-    config['AE Name'] = st.column_config.TextColumn('AE Name', width='medium')
-    config['Manager Name'] = st.column_config.TextColumn('Manager', width='medium')
-
-    # Dollar columns - use Column (not NumberColumn) to avoid format conflicts with Styler
-    dollar_cols = {
-        'Forecast Amount': 'Forecast',
-        'Quota Amount': 'Quota Amt',
-        'Closed Won': 'Closed Won',
-        'Remainder': 'Remainder',
-        'Pipeline You Should Have': 'Should Have',
-        'Open Pipeline with CW Date in Month': 'Open Pipeline',
-    }
-    for col, label in dollar_cols.items():
-        if col in df.columns:
-            config[col] = st.column_config.Column(label)
-    
-    # Pipeline Gap with help text
-    if 'Pipeline Gap' in df.columns:
-        config['Pipeline Gap'] = st.column_config.Column('Pipeline Gap', help="Negative = shortfall")
-
-    if 'Percent to Quota (%)' in df.columns:
-        config['Percent to Quota (%)'] = st.column_config.Column('% to Quota')
-
-    if 'Pipeline Coverage Ratio' in df.columns:
-        config['Pipeline Coverage Ratio'] = st.column_config.Column('Ratio (6mo avg)')
-
-    int_cols = {
-        'Activity Email': 'Email',
-        'Activity Phone': 'Phone',
-        'Activity Total': 'Total',
-        'Meetings Needed': 'Needed',
-        'Meetings Scheduled': 'Scheduled',
-    }
-    for col, label in int_cols.items():
-        if col in df.columns:
-            config[col] = st.column_config.Column(label)
-    
-    # Meeting Gap with help text
-    if 'Meeting Gap' in df.columns:
-        config['Meeting Gap'] = st.column_config.Column('Meeting Gap', help="Negative = shortfall")
-
-    return config
-
-
-# ==============================================================================
-# SUMMARY METRICS
-# ==============================================================================
-
-def display_summary_metrics(df):
-    """
-    Display top-level summary metrics.
-    
-    Percent to Quota = ForecastingItem.ForecastAmount:SUM / ForecastingQuota.QuotaAmount:SUM
-    """
-    if df.empty or len(df.columns) == 0:
-        st.info("No opportunity owners found for the selected period.")
+        st.info("No data available for the selected filters.")
         return
 
-    def _safe_sum(col):
-        return df[col].sum() if col in df.columns else 0
+    search = st.text_input("Search AEs", placeholder="Type to filter...", key="table_search")
+    filtered = df
+    if search:
+        mask = df["AE Name"].str.contains(search, case=False, na=False)
+        filtered = df[mask]
 
-    total_quota = _safe_sum('Quota Amount')
-    col1, col2, col3, col4, col5 = st.columns(5)
+    page_size = st.selectbox("Rows per page", [10, 25, 50, 100], index=0, key="page_size")
+    total = len(filtered)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = st.number_input("Page", min_value=1, max_value=total_pages, value=1, key="page_num")
+    start_idx = (page - 1) * page_size
+    page_df = filtered.iloc[start_idx: start_idx + page_size]
 
-    with col1:
-        st.metric("Total Quota", f"${total_quota:,.0f}")
-    
-    with col2:
-        total_forecast = _safe_sum('Forecast Amount')
-        percent_to_quota = (total_forecast / total_quota * 100) if total_quota > 0 else 0
-        st.metric("Total Forecast", f"${total_forecast:,.0f}",
-                 f"{percent_to_quota:.1f}% to quota")
+    display = build_display_df(page_df)
 
-    with col3:
-        total_closed = _safe_sum('Closed Won')
-        st.metric("Total Closed Won", f"${total_closed:,.0f}")
+    for section in SECTIONS:
+        section_cols = [e for e in ALL_COLUMNS if e.section == section]
+        display_name = SECTION_DISPLAY_NAMES.get(section, section)
+        col_names = ["AE Name"] + [e.display_name for e in section_cols]
+        section_df = display[[c for c in col_names if c in display.columns]]
 
-    with col4:
-        total_pipeline = _safe_sum('Open Pipeline with CW Date in Month')
-        st.metric("Total Pipeline", f"${total_pipeline:,.0f}")
+        with st.expander(f"**{display_name}**", expanded=True):
+            # Tooltips legend [spec: B.6]
+            tooltip_lines = []
+            for e in section_cols:
+                tip = TOOLTIPS.get(e.col_id, "")
+                if tip:
+                    tooltip_lines.append(f"- **{e.display_name}:** {tip}")
+            if tooltip_lines:
+                with st.expander("Column Descriptions", expanded=False):
+                    st.markdown("\n".join(tooltip_lines))
 
-    with col5:
-        total_gap = _safe_sum('Pipeline Gap')
-        gap_color = "inverse" if total_gap > 0 else "normal"
-        st.metric("Total Pipeline Gap", f"${total_gap:,.0f}",
-                 delta_color=gap_color)
+            st.dataframe(
+                section_df,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    st.caption(f"Showing {start_idx + 1}–{min(start_idx + page_size, total)} of {total} AEs")
 
 
-# ==============================================================================
-# INSIGHTS SECTION
-# ==============================================================================
-
-def display_insights(df):
-    """
-    Display additional insights (top performers, gaps, etc.).
-    
-    Customize:
-    - Add more insight panels
-    - Change ranking logic
-    - Add charts/visualizations
-    """
-    with st.expander("📈 View Additional Insights"):
+def display_charts(df: pd.DataFrame):
+    """Bar charts for critical comparison. [spec: B.1]"""
+    if df.empty:
+        return
+    with st.expander("Charts", expanded=False):
         col1, col2 = st.columns(2)
-        
         with col1:
-            st.subheader("Top Performers (Percent to Quota)")
-            top_col = 'Percent to Quota (%)' if 'Percent to Quota (%)' in df.columns else 'Attainment %'
-            top_performers = df.copy()
-            if top_col not in top_performers.columns:
-                top_performers['Attainment %'] = 0.0
-                top_col = 'Attainment %'
-            display_cols = ['AE Name', 'Forecast Amount', top_col] if 'Forecast Amount' in df.columns else ['AE Name', 'Closed Won', top_col]
-            display_cols = [c for c in display_cols if c in top_performers.columns]
-            top_performers = top_performers.nlargest(5, top_col)[display_cols]
-            st.dataframe(top_performers, use_container_width=True, hide_index=True)
-        
+            if "S1-COL-D" in df.columns and "AE Name" in df.columns:
+                chart_df = df[["AE Name", "S1-COL-D"]].copy()
+                chart_df["S1-COL-D"] = pd.to_numeric(chart_df["S1-COL-D"], errors="coerce")
+                chart_df = chart_df.dropna().rename(columns={"S1-COL-D": "Bookings YTD"})
+                fig = px.bar(
+                    chart_df, x="AE Name", y="Bookings YTD",
+                    title="Bookings YTD by AE", labels={"Bookings YTD": "$"}
+                )
+                st.plotly_chart(fig, use_container_width=True)
         with col2:
-            st.subheader("Largest Pipeline Gaps")
-            gaps = df.nlargest(5, 'Pipeline Gap')[
-                ['AE Name', 'Pipeline Gap', 'Meetings Needed']
-            ]
-            st.dataframe(gaps, use_container_width=True, hide_index=True)
+            if "S1-COL-E" in df.columns and "AE Name" in df.columns:
+                chart_df = df[["AE Name", "S1-COL-E"]].copy()
+                chart_df["S1-COL-E"] = pd.to_numeric(chart_df["S1-COL-E"], errors="coerce")
+                chart_df = chart_df.dropna().rename(columns={"S1-COL-E": "YTD Attainment %"})
+                chart_df["YTD Attainment %"] = chart_df["YTD Attainment %"] * 100
+                fig = px.bar(
+                    chart_df, x="AE Name", y="YTD Attainment %",
+                    title="YTD Quota Attainment % by AE"
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
 
-# ==============================================================================
-# CUSTOMIZATION NOTES
-# ==============================================================================
+def display_heatmap(df: pd.DataFrame):
+    """Heatmap on numeric metric columns. [spec: B.1]"""
+    if df.empty:
+        return
+    with st.expander("Heatmap", expanded=False):
+        numeric_cols = [
+            e.col_id for e in ALL_COLUMNS
+            if not e.computed and not e.blocked and e.col_id in df.columns
+        ]
+        if not numeric_cols:
+            return
+        heat_df = df[["AE Name"] + numeric_cols].copy()
+        heat_df = heat_df.set_index("AE Name")
+        for c in numeric_cols:
+            heat_df[c] = pd.to_numeric(heat_df[c], errors="coerce")
+        norm = heat_df.copy()
+        for c in numeric_cols:
+            col_max = norm[c].max()
+            if col_max and col_max > 0:
+                norm[c] = norm[c] / col_max
 
-"""
-UI Customization Ideas:
+        fig = go.Figure(data=go.Heatmap(
+            z=norm.values,
+            x=[COLUMN_BY_ID[c].display_name if c in COLUMN_BY_ID else c for c in numeric_cols],
+            y=norm.index.tolist(),
+            colorscale="RdYlGn",
+            showscale=True,
+        ))
+        fig.update_layout(
+            title="Performance Heatmap (normalized per column)",
+            height=max(300, 30 * len(df)),
+            xaxis={"tickangle": -45},
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-1. ADD CHARTS:
-   import plotly.express as px
-   fig = px.bar(df, x='AE Name', y='Closed Won', title='Closed Won by AE')
-   st.plotly_chart(fig)
 
-2. CHANGE COLORS:
-   Line 13-25: Update hex colors for branding
-   
-3. ADD MORE METRICS:
-   In display_summary_metrics(), add a 5th column:
-   with col5:
-       avg_attainment = df['Closed Won'].sum() / df['Monthly Quota'].sum()
-       st.metric("Avg Attainment", f"{avg_attainment:.1%}")
-
-4. CONDITIONAL FORMATTING:
-   def highlight_high_attainment(val):
-       if val > 100: return 'background-color: #ccffcc'
-       if val < 50: return 'background-color: #ffcccc'
-       return ''
-"""
+def render_fetch_status(timestamp: str | None) -> bool:
+    """Display fetch timestamp and return True if Refresh was clicked. [spec: B.3]"""
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if timestamp:
+            st.caption(f"Data last fetched: {timestamp}")
+        else:
+            st.caption("Data not yet fetched.")
+    with col2:
+        return st.button("Refresh Data", use_container_width=True)
