@@ -2,6 +2,7 @@
 Meta filter utilities: fiscal year, time period, filter param builder.
 [spec: Section A]
 """
+from __future__ import annotations
 from datetime import date, timedelta
 import calendar
 
