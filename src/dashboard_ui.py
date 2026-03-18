@@ -24,6 +24,7 @@ CURRENCY_COLS = {
     "S1-COL-I", "S1-COL-J", "S1-COL-L", "S1-COL-M", "S1-COL-N",
 }
 PERCENT_COLS = {"S1-COL-E", "S1-COL-H"}
+LOWER_IS_BETTER = {"S1-COL-N"}
 
 TOOLTIPS: dict[str, str] = {
     "S1-COL-C": "Quota YTD: SUM(ForecastingQuota.QuotaAmount) from fiscal year start to today. Time-filter immune.",
@@ -86,6 +87,29 @@ def fmt_number(val) -> str:
     return f"{int(val):,}"
 
 
+def _light_heatmap(col, reverse=False):
+    """Light heatmap colors: pink (worst) to green (best)."""
+    numeric = pd.to_numeric(col, errors="coerce")
+    if numeric.isna().all():
+        return [""] * len(col)
+    vmin, vmax = numeric.min(), numeric.max()
+    if pd.isna(vmin) or pd.isna(vmax) or vmin == vmax:
+        return [""] * len(col)
+    norm = (numeric - vmin) / (vmax - vmin)
+    if reverse:
+        norm = 1 - norm
+    result = []
+    for v in norm:
+        if pd.isna(v):
+            result.append("")
+        else:
+            r = int(255 - v * 35)
+            g = int(230 + v * 25)
+            b = int(230 - v * 10)
+            result.append(f"background-color: rgb({r}, {g}, {b})")
+    return result
+
+
 def display_kpi_widgets(df: pd.DataFrame):
     """Top-of-page KPI widgets showing aggregate totals. [spec: B.1]"""
     if df.empty:
@@ -106,74 +130,88 @@ def display_kpi_widgets(df: pd.DataFrame):
             cols[i].metric(label, formatter(val))
 
 
-def build_display_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Format raw numeric DataFrame into display-ready strings."""
-    out = df[["AE Name"]].copy()
-    for entry in ALL_COLUMNS:
-        col = entry.col_id
-        if col not in df.columns:
-            out[entry.display_name] = "—"
-            continue
-        if entry.blocked:
-            out[entry.display_name] = "Pending"
-            continue
-        if col in CURRENCY_COLS:
-            out[entry.display_name] = df[col].apply(fmt_currency)
-        elif col in PERCENT_COLS:
-            out[entry.display_name] = df[col].apply(fmt_percent)
-        else:
-            out[entry.display_name] = df[col].apply(fmt_number)
-    return out
-
-
 def display_dashboard_table(df: pd.DataFrame):
     """
-    Main data table with section grouping, search, sort, pagination, tooltips.
+    Main data table with section grouping, heatmap styling, pagination.
     [spec: B.1, B.2, B.6]
     """
     if df.empty:
         st.info("No data available for the selected filters.")
         return
 
-    search = st.text_input("Search AEs", placeholder="Type to filter...", key="table_search")
-    filtered = df
-    if search:
-        mask = df["AE Name"].str.contains(search, case=False, na=False)
-        filtered = df[mask]
-
-    page_size = st.selectbox("Rows per page", [10, 25, 50, 100], index=0, key="page_size")
-    total = len(filtered)
+    # Pagination in sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Pagination")
+    page_size = st.sidebar.selectbox(
+        "Rows per page", [10, 25, 50, 100], index=1, key="page_size"
+    )
+    total = len(df)
     total_pages = max(1, (total + page_size - 1) // page_size)
-    page = st.number_input("Page", min_value=1, max_value=total_pages, value=1, key="page_num")
+    page = st.sidebar.number_input(
+        "Page", min_value=1, max_value=total_pages, value=1, key="page_num"
+    )
     start_idx = (page - 1) * page_size
-    page_df = filtered.iloc[start_idx: start_idx + page_size]
-
-    display = build_display_df(page_df)
+    page_df = df.iloc[start_idx : start_idx + page_size]
 
     for section in SECTIONS:
         section_cols = [e for e in ALL_COLUMNS if e.section == section]
         display_name = SECTION_DISPLAY_NAMES.get(section, section)
-        col_names = ["AE Name"] + [e.display_name for e in section_cols]
-        section_df = display[[c for c in col_names if c in display.columns]]
+
+        # Build section DataFrame with numeric values and display-name columns
+        section_data = pd.DataFrame()
+        section_data["AE Name"] = page_df["AE Name"].values
+        if "AE Manager" in page_df.columns:
+            section_data["AE Manager"] = page_df["AE Manager"].values
+
+        format_dict = {}
+        heatmap_cols = []
+
+        for entry in section_cols:
+            name = entry.display_name
+            if entry.col_id not in page_df.columns:
+                section_data[name] = None
+            elif entry.blocked:
+                section_data[name] = "Pending"
+            else:
+                section_data[name] = pd.to_numeric(
+                    page_df[entry.col_id].values, errors="coerce"
+                )
+                if entry.col_id in CURRENCY_COLS:
+                    format_dict[name] = fmt_currency
+                elif entry.col_id in PERCENT_COLS:
+                    format_dict[name] = fmt_percent
+                else:
+                    format_dict[name] = fmt_number
+                heatmap_cols.append((name, entry.col_id in LOWER_IS_BETTER))
 
         with st.expander(f"**{display_name}**", expanded=True):
-            # Tooltips legend [spec: B.6]
             tooltip_lines = []
             for e in section_cols:
                 tip = TOOLTIPS.get(e.col_id, "")
                 if tip:
                     tooltip_lines.append(f"- **{e.display_name}:** {tip}")
             if tooltip_lines:
-                with st.expander("Column Descriptions", expanded=False):
+                if st.checkbox(
+                    "Show Column Descriptions",
+                    key=f"tooltips_{section}",
+                    value=False,
+                ):
                     st.markdown("\n".join(tooltip_lines))
 
-            st.dataframe(
-                section_df,
-                use_container_width=True,
-                hide_index=True,
-            )
+            styler = section_data.style
+            if format_dict:
+                styler = styler.format(format_dict, na_rep="—")
+            for col_name, reverse in heatmap_cols:
+                if col_name in section_data.columns:
+                    styler = styler.apply(
+                        _light_heatmap, reverse=reverse, subset=[col_name]
+                    )
 
-    st.caption(f"Showing {start_idx + 1}–{min(start_idx + page_size, total)} of {total} AEs")
+            st.dataframe(styler, use_container_width=True, hide_index=True)
+
+    st.caption(
+        f"Showing {start_idx + 1}–{min(start_idx + page_size, total)} of {total} AEs"
+    )
 
 
 def display_charts(df: pd.DataFrame):

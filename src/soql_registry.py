@@ -7,7 +7,7 @@ CRITICAL RULES (from spec):
 2. time_filter=False columns ignore the meta time-period filter.
 3. Per-SOQL error isolation: if one query fails, only its columns show NaN/error.
 4. Columns E and H are computed — no SOQL.
-5. SDR queries use Owner.AEEmail__c, NOT OwnerId.
+5. SDR queries use OwnerId IN (Assigned_SDR_Outbound__c from the AE’s User record).
 6. Section 2 prospect filtering requires post-filter or subquery.
 7. Section 4 Channel Partner exclusions are mandatory (all four).
 """
@@ -30,7 +30,7 @@ class SOQLEntry:
 
 
 def _owner_clause(p: dict) -> str:
-    """Build the OwnerId / Manager filter clause."""
+    """Build the OwnerId / Manager filter clause for Opportunity."""
     if p.get("manager_name") and not p.get("ae_user_id"):
         return f"Owner.Manager.Name = '{p['manager_name']}'"
     if p.get("ae_user_id"):
@@ -38,9 +38,60 @@ def _owner_clause(p: dict) -> str:
     return "OwnerId != null"
 
 
+def _quota_owner_clause(p: dict) -> str:
+    """Build the QuotaOwnerId filter clause for ForecastingQuota."""
+    if p.get("ae_user_id"):
+        return f"QuotaOwnerId = '{p['ae_user_id']}'"
+    return "QuotaOwnerId != null"
+
+
+def _custom_owner_clause(p: dict) -> str:
+    """Build the Assigned_ID_Custom__c filter clause for Task/Event objects."""
+    if p.get("ae_user_id"):
+        return f"Assigned_ID_Custom__c = '{p['ae_user_id']}'"
+    return "Assigned_ID_Custom__c != null"
+
+
 def _ae_email_clause(p: dict) -> str:
     """SDR→AE linkage via AEEmail__c."""
     return f"Owner.AEEmail__c = '{p.get('ae_email', '')}'"
+
+
+def _sdr_owner_clause(p: dict) -> str:
+    """Build OwnerId IN (subquery) from AE's Assigned_SDR_Outbound__c — SDR(s) associated with the given AE."""
+    ae_id = p.get("ae_user_id", "")
+    if not ae_id:
+        return "OwnerId != null"
+    # AE User has Assigned_SDR_Outbound__c pointing to SDR User(s); use those as owner IDs
+    return (
+        f"OwnerId IN (SELECT Assigned_SDR_Outbound__c FROM User WHERE Id = '{ae_id}'"
+        f" AND Assigned_SDR_Outbound__c != null)"
+    )
+
+
+_CLAUSE_BUILDERS = {
+    "{owner_clause}": ("Owner Clause", _owner_clause),
+    "{quota_owner_clause}": ("Quota Owner Clause", _quota_owner_clause),
+    "{custom_owner_clause}": ("Custom Owner Clause", _custom_owner_clause),
+    "{ae_email_clause}": ("AE Email Clause", _ae_email_clause),
+    "{sdr_owner_clause}": ("SDR Owner Clause", _sdr_owner_clause),
+}
+
+# Mapping of batchable clause placeholders → GROUP BY field
+BATCH_FIELD_MAP = {
+    "{owner_clause}": "OwnerId",
+    "{quota_owner_clause}": "QuotaOwnerId",
+    "{custom_owner_clause}": "Assigned_ID_Custom__c",
+}
+
+
+def resolve_owner_clauses(template: str, params: dict) -> list[tuple[str, str, str]]:
+    """Return [(display_name, placeholder, resolved)] for owner clauses in the template."""
+    result = []
+    for placeholder, (name, builder) in _CLAUSE_BUILDERS.items():
+        if placeholder in template:
+            result.append((name, placeholder, builder(params)))
+    return result
 
 
 def build_query(entry: SOQLEntry, params: dict) -> str:
@@ -49,10 +100,16 @@ def build_query(entry: SOQLEntry, params: dict) -> str:
     params keys defined by meta_filters.build_filter_params().
     """
     owner = _owner_clause(params)
+    quota_owner = _quota_owner_clause(params)
+    custom_owner = _custom_owner_clause(params)
     ae_email = _ae_email_clause(params)
+    sdr_owner = _sdr_owner_clause(params)
     return entry.template.format(
         owner_clause=owner,
+        quota_owner_clause=quota_owner,
+        custom_owner_clause=custom_owner,
         ae_email_clause=ae_email,
+        sdr_owner_clause=sdr_owner,
         **params,
     )
 
@@ -71,7 +128,7 @@ S1_COL_C = SOQLEntry(
     template="""
 SELECT SUM(QuotaAmount) total
 FROM ForecastingQuota
-WHERE {owner_clause}
+WHERE {quota_owner_clause}
   AND StartDate >= {fiscal_year_start}
   AND StartDate <= TODAY
 """,
@@ -87,7 +144,7 @@ S1_COL_D = SOQLEntry(
     template="""
 SELECT SUM(Amount) total
 FROM Opportunity
-WHERE StageName = 'Closed Won'
+WHERE StageName = 'Closed/Won'
   AND {owner_clause}
   AND CloseDate >= {fiscal_year_start}
   AND CloseDate <= TODAY
@@ -115,7 +172,7 @@ S1_COL_F = SOQLEntry(
     template="""
 SELECT SUM(QuotaAmount) total
 FROM ForecastingQuota
-WHERE {owner_clause}
+WHERE {quota_owner_clause}
   AND StartDate = THIS_MONTH
 """,
 )
@@ -130,7 +187,7 @@ S1_COL_G = SOQLEntry(
     template="""
 SELECT SUM(Amount) total
 FROM Opportunity
-WHERE StageName = 'Closed Won'
+WHERE StageName = 'Closed/Won'
   AND {owner_clause}
   AND CloseDate = THIS_MONTH
 """,
@@ -221,7 +278,7 @@ S1_COL_M = SOQLEntry(
     template="""
 SELECT SUM(Amount) total
 FROM Opportunity
-WHERE StageName = 'Closed Won'
+WHERE StageName = 'Closed/Won'
   AND {owner_clause}
   AND CloseDate >= {time_start_date}
   AND CloseDate <= {time_end_date}
@@ -238,7 +295,7 @@ S1_COL_N = SOQLEntry(
     template="""
 SELECT SUM(Amount) total
 FROM Opportunity
-WHERE StageName = 'Closed Lost'
+WHERE StageName = 'Closed/Lost'
   AND {owner_clause}
   AND CloseDate >= {time_start_date}
   AND CloseDate <= {time_end_date}
@@ -261,13 +318,11 @@ S2_COL_O = SOQLEntry(
     template="""
 SELECT COUNT_DISTINCT(WhoId) total
 FROM Task
-WHERE (ActivityType = 'Email' OR TaskSubtype = 'Email')
-  AND Owner.UserRole.Name LIKE '%Sales Rep%'
-  AND Owner.UserRole.Name NOT LIKE '%Account Manager%'
-  AND Owner.UserRole.Name NOT LIKE '%SDR%'
+WHERE (Type = 'Email' OR TaskSubtype = 'Email')
+  AND IsClosed = true
+  AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
-  AND {owner_clause}
 """,
 )
 
@@ -281,13 +336,11 @@ S2_COL_P = SOQLEntry(
     template="""
 SELECT COUNT_DISTINCT(WhoId) total
 FROM Task
-WHERE (ActivityType LIKE '%Call%' OR TaskSubtype LIKE '%Call%')
-  AND Owner.UserRole.Name LIKE '%Sales Rep%'
-  AND Owner.UserRole.Name NOT LIKE '%Account Manager%'
-  AND Owner.UserRole.Name NOT LIKE '%SDR%'
+WHERE (Type LIKE '%Call%' OR TaskSubtype LIKE '%Call%')
+  AND IsClosed = true
+  AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
-  AND {owner_clause}
 """,
 )
 
@@ -315,7 +368,6 @@ FROM Event
 WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Foot Canvass'
-  AND Owner.UserRole.Name LIKE '%Sales Rep%'
   AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -335,7 +387,6 @@ FROM Event
 WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Net New'
-  AND Owner.UserRole.Name LIKE '%Sales Rep%'
   AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -357,9 +408,9 @@ S3_COL_T = SOQLEntry(
     template="""
 SELECT COUNT_DISTINCT(WhoId) total
 FROM Task
-WHERE (ActivityType = 'Email' OR TaskSubtype = 'Email')
-  AND Owner.UserRole.Name LIKE '%SDR%'
-  AND {ae_email_clause}
+WHERE (Type = 'Email' OR TaskSubtype = 'Email')
+  AND IsClosed = true
+  AND {sdr_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -375,9 +426,9 @@ S3_COL_U = SOQLEntry(
     template="""
 SELECT COUNT_DISTINCT(WhoId) total
 FROM Task
-WHERE (ActivityType LIKE '%Call%' OR TaskSubtype LIKE '%Call%')
-  AND Owner.UserRole.Name LIKE '%SDR%'
-  AND {ae_email_clause}
+WHERE (Type LIKE '%Call%' OR TaskSubtype LIKE '%Call%')
+  AND IsClosed = true
+  AND {sdr_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -396,9 +447,7 @@ FROM Event
 WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Net New'
-  AND CreatedBy.UserRole.Name LIKE '%Sales Rep%'
-  AND CreatedBy.UserRole.Name NOT LIKE '%Account Manager%'
-  AND CreatedBy.UserRole.Name NOT LIKE '%SDR%'
+  AND {sdr_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -417,14 +466,7 @@ FROM Event
 WHERE Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Net New'
   AND CreatedBy.UserRole.Name LIKE '%SDR%'
-  AND (
-    Owner.UserRole.Name LIKE 'Sales Rep%'
-    OR Owner.UserRole.Name LIKE 'Channel%'
-    OR Owner.UserRole.Name LIKE 'Inbound%'
-  )
-  AND Owner.UserRole.Name NOT LIKE '%Account Manager%'
-  AND Owner.UserRole.Name NOT LIKE '%SDR%'
-  AND Owner.UserRole.Name NOT LIKE '%Client Success%'
+  AND {sdr_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -446,14 +488,15 @@ S4_COL_X = SOQLEntry(
     template="""
 SELECT COUNT_DISTINCT(WhoId) total
 FROM Task
-WHERE (ActivityType = 'Email' OR TaskSubtype = 'Email')
+WHERE (Type = 'Email' OR TaskSubtype = 'Email')
+  AND IsClosed = true
   AND CreatedBy.Name != 'Hubspot Integration'
   AND Inbound_Call__c = false
-  AND Subject NOT LIKE '%[Gong In]%'
-  AND Subject NOT LIKE '%[ ref:!%'
+  AND (NOT Subject LIKE '%Gong In%')
+  AND (NOT Subject LIKE '%[ ref:!%')
   AND Related_To_Object__c != 'Case'
-  AND Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
-                  'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant')
+  AND WhoId IN (SELECT Id FROM Contact WHERE Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
+                  'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant'))
   AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -470,14 +513,15 @@ S4_COL_Y = SOQLEntry(
     template="""
 SELECT COUNT_DISTINCT(WhoId) total
 FROM Task
-WHERE (ActivityType LIKE '%Call%' OR TaskSubtype LIKE '%Call%')
+WHERE (Type LIKE '%Call%' OR TaskSubtype LIKE '%Call%')
+  AND IsClosed = true
   AND CreatedBy.Name != 'Hubspot Integration'
   AND Inbound_Call__c = false
-  AND Subject NOT LIKE '%[Gong In]%'
-  AND Subject NOT LIKE '%[ ref:!%'
+  AND (NOT Subject LIKE '%Gong In%')
+  AND (NOT Subject LIKE '%[ ref:!%')
   AND Related_To_Object__c != 'Case'
-  AND Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
-                  'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant')
+  AND WhoId IN (SELECT Id FROM Contact WHERE Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
+                  'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant'))
   AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -499,8 +543,8 @@ WHERE RecordType.Name = 'Partner Event'
   AND Meeting_Status__c = 'Scheduled'
   AND CreatedBy.Name != 'Hubspot Integration'
   AND Related_To_Object__c != 'Case'
-  AND Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
-                  'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant')
+  AND WhoId IN (SELECT Id FROM Contact WHERE Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
+               'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant'))
   AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -522,8 +566,8 @@ WHERE RecordType.Name = 'Partner Event'
   AND Meeting_Status__c LIKE 'Attended%'
   AND CreatedBy.Name != 'Hubspot Integration'
   AND Related_To_Object__c != 'Case'
-  AND Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
-                  'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant')
+  AND WhoId IN (SELECT Id FROM Contact WHERE Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
+               'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant'))
   AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}

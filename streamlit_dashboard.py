@@ -1,8 +1,15 @@
 import os
+import logging
 from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logging.basicConfig(
+    format="%(asctime)s [%(name)s] %(message)s",
+    datefmt="%H:%M:%S",
+    level=logging.INFO,
+)
 
 import streamlit as st
 
@@ -31,8 +38,9 @@ from src.data_engine import (
     build_dashboard_dataframe,
     get_managers_list,
     get_ae_names_list,
+    clear_query_failures,
 )
-from src.soql_registry import ALL_COLUMNS, COLUMN_BY_ID, build_query
+from src.soql_registry import ALL_COLUMNS, COLUMN_BY_ID, build_query, resolve_owner_clauses
 from src.dashboard_ui import (
     apply_custom_css,
     display_kpi_widgets,
@@ -231,9 +239,17 @@ def render_dashboard_tab(sf):
         st.session_state["dashboard_df"] = None
         st.session_state["fetch_ts"] = None
 
+    # Auto-refresh when filter params change (fixes period-dependent columns)
+    params_key = str(sorted(params.items()))
+    if st.session_state.get("last_params_key") != params_key:
+        st.session_state["dashboard_df"] = None
+        st.session_state["last_params_key"] = params_key
+
     should_refresh = render_fetch_status(st.session_state.get("fetch_ts"))
 
     if st.session_state["dashboard_df"] is None or should_refresh:
+        if should_refresh:
+            clear_query_failures()
         with st.spinner("Fetching data from Salesforce…"):
             overrides = st.session_state.get("soql_overrides", {})
             df = build_dashboard_dataframe(sf, params, overrides)
@@ -262,6 +278,32 @@ def render_soql_tab(sf):
     if "soql_overrides" not in st.session_state:
         st.session_state["soql_overrides"] = {}
 
+    # --- Test AE selector (replaces DUMMY_ID) ---
+    if "soql_test_ae_list" not in st.session_state:
+        st.session_state["soql_test_ae_list"] = []
+    if st.button("Load AE List", key="load_ae_list") or st.session_state["soql_test_ae_list"]:
+        if not st.session_state["soql_test_ae_list"]:
+            with st.spinner("Loading AEs from Salesforce..."):
+                st.session_state["soql_test_ae_list"] = get_ae_names_list(sf)
+        ae_list = st.session_state["soql_test_ae_list"]
+        if not ae_list:
+            st.warning("No AEs found. Check User_Role_Formula__c filter.")
+        else:
+            ae_display = [f"{a['name']} ({a['id']})" for a in ae_list]
+            selected_idx = st.selectbox(
+                "Select AE for testing queries",
+                range(len(ae_display)),
+                format_func=lambda i: ae_display[i],
+                key="soql_test_ae_select",
+            )
+            selected_ae = ae_list[selected_idx]
+            st.session_state["soql_test_ae_id"] = selected_ae["id"]
+            st.session_state["soql_test_ae_email"] = selected_ae["email"]
+    else:
+        st.info("Click 'Load AE List' to select a test AE for running queries.")
+
+    st.divider()
+
     for entry in ALL_COLUMNS:
         label = f"[{entry.col_id}] {entry.display_name}"
         if entry.blocked:
@@ -280,6 +322,21 @@ def render_soql_tab(sf):
                 st.warning("Blocked — pending field value confirmation from Salesforce org.")
                 continue
 
+            # Show resolved owner clauses
+            test_ae_id = st.session_state.get("soql_test_ae_id")
+            clause_params = {
+                "ae_user_id": test_ae_id or "",
+                "ae_email": st.session_state.get("soql_test_ae_email", ""),
+                "manager_name": None,
+            }
+            clauses = resolve_owner_clauses(entry.template, clause_params)
+            if clauses:
+                for name, placeholder, resolved in clauses:
+                    if test_ae_id:
+                        st.code(f"{name}: {resolved}", language=None)
+                    else:
+                        st.caption(f"Uses `{placeholder}` — select test AE to preview")
+
             current_soql = st.session_state["soql_overrides"].get(
                 entry.col_id, entry.template
             ).strip()
@@ -294,37 +351,58 @@ def render_soql_tab(sf):
             col_test, col_save = st.columns(2)
             with col_test:
                 if st.button("Test", key=f"soql_test_{entry.col_id}"):
-                    test_params = {
-                        "ae_user_id": "DUMMY_ID",
-                        "ae_email": "test@example.com",
-                        "manager_name": None,
-                        "time_start": "2025-01-01T00:00:00Z",
-                        "time_end": "2025-12-31T23:59:59Z",
-                        "time_start_date": "2025-01-01",
-                        "time_end_date": "2025-12-31",
-                        "fiscal_year_start": "2025-01-01",
-                        "this_month_start": "2025-03-01",
-                        "this_month_end": "2025-03-31",
-                        "next_month_start": "2025-04-01",
-                        "next_month_end": "2025-04-30",
-                    }
-                    from src.soql_registry import SOQLEntry as _SOQLEntry, build_query as _bq
-                    test_entry = _SOQLEntry(
-                        col_id=entry.col_id,
-                        display_name=entry.display_name,
-                        section=entry.section,
-                        description=entry.description,
-                        template=new_soql,
-                        time_filter=entry.time_filter,
-                        aggregation=entry.aggregation,
-                    )
-                    try:
-                        built = _bq(test_entry, test_params)
-                        sf.query(built.strip())
-                        st.success("Query executed successfully. Click Save to persist.")
-                        st.session_state[f"soql_tested_{entry.col_id}"] = new_soql
-                    except Exception as e:
-                        st.error(f"Query failed: {e}")
+                    test_ae_id = st.session_state.get("soql_test_ae_id")
+                    test_ae_email = st.session_state.get("soql_test_ae_email", "")
+                    if not test_ae_id:
+                        st.warning("Please load and select a test AE above first.")
+                    else:
+                        test_params = {
+                            "ae_user_id": test_ae_id,
+                            "ae_email": test_ae_email,
+                            "manager_name": None,
+                            "time_start": "2025-01-01T00:00:00Z",
+                            "time_end": "2025-12-31T23:59:59Z",
+                            "time_start_date": "2025-01-01",
+                            "time_end_date": "2025-12-31",
+                            "fiscal_year_start": "2025-01-01",
+                            "this_month_start": "2025-03-01",
+                            "this_month_end": "2025-03-31",
+                            "next_month_start": "2025-04-01",
+                            "next_month_end": "2025-04-30",
+                        }
+                        from src.soql_registry import SOQLEntry as _SOQLEntry, build_query as _bq
+                        test_entry = _SOQLEntry(
+                            col_id=entry.col_id,
+                            display_name=entry.display_name,
+                            section=entry.section,
+                            description=entry.description,
+                            template=new_soql,
+                            time_filter=entry.time_filter,
+                            aggregation=entry.aggregation,
+                        )
+                        try:
+                            built = _bq(test_entry, test_params)
+                            result = sf.query(built.strip())
+                            records = result.get("records", [])
+                            if records:
+                                first = records[0]
+                                value = next(
+                                    (v for k, v in first.items() if k != "attributes"),
+                                    None,
+                                )
+                                st.success(
+                                    f"Query OK — returned **{value}** "
+                                    f"({result.get('totalSize', 0)} record(s)). "
+                                    f"Click Save to persist."
+                                )
+                            else:
+                                st.success(
+                                    "Query OK — returned **0 records** (null). "
+                                    "Click Save to persist."
+                                )
+                            st.session_state[f"soql_tested_{entry.col_id}"] = new_soql
+                        except Exception as e:
+                            st.error(f"Query failed: {e}")
             with col_save:
                 tested = st.session_state.get(f"soql_tested_{entry.col_id}")
                 if st.button(
@@ -338,6 +416,7 @@ def render_soql_tab(sf):
     st.divider()
     if st.button("Refresh Dashboard with Updated Queries"):
         st.session_state["dashboard_df"] = None
+        clear_query_failures()
         st.success("Dashboard will refresh on next view.")
 
 
