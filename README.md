@@ -118,21 +118,14 @@ The dashboard is **modularized** for easy customization. See [docs/CUSTOMIZATION
 streamlit run streamlit_dashboard.py
 ```
 
-### Docker (Local)
-```bash
-docker build -t ae-dashboard .
-docker run -p 8501:8501 ae-dashboard
-```
-
 ### Azure Deployment (from your machine)
 
-Deploy to Azure App Service using the CLI. Requires Azure CLI, PowerShell 7+, and Docker.
+Deploy to Azure App Service using the CLI. Requires Azure CLI and PowerShell 7+.
 
 **Prerequisites:**
 ```powershell
 az login                     # Sign into Azure
 az bicep install             # Install Bicep CLI (if not already)
-docker info                  # Verify Docker is running
 ```
 
 **1. Create the resource group** (skip if already exists):
@@ -157,20 +150,21 @@ az group create --name "doldata-rg" --location "eastus"
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
     -AppName "ae-dashboard" `
+    -AppServicePlanId "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/serverfarms/<plan>" `
     -AzureAdClientId "your-client-id" `
     -AzureAdTenantId "your-tenant-id" `
     -AzureAdClientSecret "your-client-secret" `
     -AzureAllowedEmails "user1@company.com,user2@company.com"
 ```
 
-This provisions infrastructure (Bicep), builds/pushes the Docker image (ACR), and configures the App Service.
+This provisions infrastructure (Bicep), zip-deploys the application code, and configures the App Service. The app shares an App Service Plan with the DOL app (passed via `-AppServicePlanId`).
 
 **5. Configure Salesforce credentials:**
 ```powershell
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
     -AppName "ae-dashboard" `
-    -SkipBicep -SkipDocker -ConfigureSettings
+    -SkipInfra -SkipDeploy -ConfigureSettings
 ```
 
 **6. Verify:** Visit `https://ae-dashboard.azurewebsites.net` — you should see the Microsoft login page.
@@ -180,7 +174,7 @@ For code-only redeployments (infra already exists):
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
     -AppName "ae-dashboard" `
-    -SkipBicep
+    -SkipInfra
 ```
 
 See [docs/AZURE_DEPLOYMENT_GUIDE.md](docs/AZURE_DEPLOYMENT_GUIDE.md) for the full guide including troubleshooting, parameter reference, and CI/CD pipeline setup.

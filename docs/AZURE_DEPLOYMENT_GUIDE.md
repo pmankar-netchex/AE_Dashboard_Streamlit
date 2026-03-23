@@ -6,8 +6,8 @@ Deploy the AE Dashboard to Azure App Service with Azure AD authentication and us
 
 The deployment uses:
 
-- **Azure App Service** (Linux, Docker container) to host the Streamlit app
-- **Azure Container Registry (ACR)** to store Docker images
+- **Azure App Service** (Linux, Python 3.11) to host the Streamlit app via zip deploy
+- **Shared App Service Plan** owned by the DOL repo (passed in via `-AppServicePlanId`)
 - **Azure Key Vault** for secure Salesforce token storage
 - **MSAL (in-app)** for Azure AD authentication — users must sign in with Microsoft
 - **Email/domain allowlists** to restrict access to specific users
@@ -24,7 +24,6 @@ The deployment uses:
 |------|---------|--------|
 | **Azure CLI** | [Install Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) | `az version` |
 | **PowerShell 7+** | [Install PowerShell](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell) | `pwsh --version` |
-| **Docker** | [Install Docker](https://docs.docker.com/get-docker/) | `docker info` |
 | **Bicep CLI** | `az bicep install` | `az bicep version` |
 
 ### Azure Access
@@ -110,6 +109,7 @@ This is the primary mechanism for limiting who can access the dashboard.
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
     -AppName "ae-dashboard" `
+    -AppServicePlanId "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/serverfarms/<plan>" `
     -AzureAdClientId "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" `
     -AzureAdTenantId "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy" `
     -AzureAdClientSecret "your-client-secret-value" `
@@ -117,9 +117,9 @@ This is the primary mechanism for limiting who can access the dashboard.
 ```
 
 This will:
-1. Deploy Bicep infrastructure (ACR, App Service, Key Vault)
-2. Build and push the Docker image to ACR
-3. Configure container on App Service
+1. Deploy Bicep infrastructure (App Service, Key Vault)
+2. Zip-deploy the application code to App Service
+3. Configure App Settings
 
 ### Option B: Full deployment + configure Salesforce interactively
 
@@ -127,6 +127,7 @@ This will:
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
     -AppName "ae-dashboard" `
+    -AppServicePlanId "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/serverfarms/<plan>" `
     -AzureAdClientId "..." `
     -AzureAdTenantId "..." `
     -AzureAdClientSecret "..." `
@@ -142,16 +143,16 @@ The `-ConfigureSettings` flag will interactively prompt for Salesforce OAuth cre
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
     -AppName "ae-dashboard" `
-    -SkipBicep
+    -SkipInfra
 ```
 
-### Option D: Update settings only (no rebuild)
+### Option D: Update settings only (no redeploy)
 
 ```powershell
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
     -AppName "ae-dashboard" `
-    -SkipBicep -SkipDocker -ConfigureSettings
+    -SkipInfra -SkipDeploy -ConfigureSettings
 ```
 
 ---
@@ -177,7 +178,7 @@ See [SALESFORCE_CONNECTED_APP_SETUP.md](SALESFORCE_CONNECTED_APP_SETUP.md) for c
 
 ## Step 6: Verify the Deployment
 
-1. Wait 1-2 minutes for the container to start
+1. Wait 1-2 minutes for the app to start
 2. Visit `https://ae-dashboard.azurewebsites.net`
 3. You should be redirected to the Microsoft login page
 4. Sign in with an assigned user account
@@ -188,11 +189,6 @@ See [SALESFORCE_CONNECTED_APP_SETUP.md](SALESFORCE_CONNECTED_APP_SETUP.md) for c
 Check logs:
 ```powershell
 az webapp log tail --resource-group "doldata-rg" --name "ae-dashboard"
-```
-
-Check container status:
-```powershell
-az webapp show --resource-group "doldata-rg" --name "ae-dashboard" --query "state" -o tsv
 ```
 
 Health endpoint:
@@ -247,16 +243,15 @@ az webapp config appsettings set `
 |-----------|----------|---------|-------------|
 | `ResourceGroupName` | Yes | — | Azure resource group (must exist) |
 | `AppName` | Yes | — | Base name for all resources |
+| `AppServicePlanId` | Yes | — | Resource ID of the shared App Service Plan (owned by DOL repo) |
 | `Location` | No | `eastus` | Azure region |
-| `AppServicePlanSku` | No | `B1` | App Service Plan SKU |
-| `AcrSku` | No | `Basic` | Container Registry SKU |
 | `AzureAdClientId` | No | `''` | Azure AD app client ID |
 | `AzureAdTenantId` | No | `''` | Azure AD tenant ID |
 | `AzureAdClientSecret` | No | `''` | Azure AD client secret |
 | `AzureAllowedDomains` | No | `''` | Comma-separated allowed domains |
 | `AzureAllowedEmails` | No | `''` | Comma-separated allowed emails |
-| `SkipBicep` | No | `false` | Skip infrastructure deployment |
-| `SkipDocker` | No | `false` | Skip Docker build/push |
+| `SkipInfra` | No | `false` | Skip infrastructure deployment (Bicep) |
+| `SkipDeploy` | No | `false` | Skip zip deployment |
 | `ConfigureSettings` | No | `false` | Interactively configure App Settings |
 
 ### App Settings (Environment Variables)
@@ -282,8 +277,8 @@ az webapp config appsettings set `
 
 The `azure-pipelines.yml` handles automated deployments on push to `main`:
 
-1. **Build**: Docker build + push to ACR
-2. **Deploy**: Update App Service container image
+1. **Build**: Install dependencies and create zip package
+2. **Deploy**: Zip-deploy to Azure App Service
 
 ### Required Pipeline Variables
 
@@ -291,10 +286,7 @@ Set these in Azure DevOps (Pipeline > Edit > Variables):
 
 | Variable | Description |
 |----------|-------------|
-| `ACR_SERVICE_CONNECTION` | Service connection to ACR |
 | `AZURE_SERVICE_CONNECTION` | Service connection to Azure subscription |
-| `ACR_LOGIN_SERVER` | ACR hostname (e.g., `aedashboardacr.azurecr.io`) |
-| `ACR_REPOSITORY` | Repository name (e.g., `ae-dashboard`) |
 | `APP_NAME` | App Service name (e.g., `ae-dashboard`) |
 | `RESOURCE_GROUP_NAME` | Resource group name |
 
