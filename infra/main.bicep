@@ -28,6 +28,27 @@ param appServicePlanSku string = 'B1'
 @allowed(['Basic', 'Standard', 'Premium'])
 param acrSku string = 'Basic'
 
+// --- Azure AD / MSAL parameters (for user authentication + restriction) ---
+
+@description('Azure AD App Registration client ID. Leave empty to skip MSAL auth.')
+param azureAdClientId string = ''
+
+@description('Azure AD tenant ID.')
+param azureAdTenantId string = ''
+
+@secure()
+@description('Azure AD App Registration client secret. Set via deploy.ps1 -ConfigureSettings if preferred.')
+param azureAdClientSecret string = ''
+
+@description('Azure AD redirect URI. Defaults to the App Service URL.')
+param azureAdRedirectUri string = ''
+
+@description('Comma-separated list of allowed email domains (e.g., "company.com,subsidiary.com"). Empty = no domain restriction.')
+param azureAllowedDomains string = ''
+
+@description('Comma-separated list of allowed email addresses. Empty = no email restriction.')
+param azureAllowedEmails string = ''
+
 // ============================================================
 // VARIABLES
 // ============================================================
@@ -35,6 +56,7 @@ param acrSku string = 'Basic'
 // ACR names must be alphanumeric only — strip hyphens from appName
 var acrName = replace(appName, '-', '')
 var keyVaultName = '${appName}-kv'
+var effectiveRedirectUri = azureAdRedirectUri != '' ? azureAdRedirectUri : 'https://${appName}.azurewebsites.net'
 
 // ============================================================
 // RESOURCE 1: Azure Container Registry
@@ -98,17 +120,15 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
         // { name: 'SALESFORCE_SANDBOX', value: 'false' }
         // { name: 'SALESFORCE_LOGIN_URL', value: '' }
         // { name: 'SALESFORCE_OAUTH_SCOPES', value: 'api refresh_token offline_access' }
-        // --- Azure AD / MSAL (optional, set via deploy.ps1 -ConfigureSettings if needed) ---
-        // { name: 'AZURE_CLIENT_ID', value: '' }
-        // { name: 'AZURE_TENANT_ID', value: '' }
-        // { name: 'AZURE_CLIENT_SECRET', value: '' }
-        // { name: 'AZURE_REDIRECT_URI', value: 'https://${appName}.azurewebsites.net' }
-        // { name: 'AZURE_AUTHORITY', value: '' }
-        // { name: 'AZURE_SCOPES', value: 'User.Read' }
-        // { name: 'AZURE_ALLOWED_DOMAINS', value: '' }
-        // { name: 'AZURE_ALLOWED_EMAILS', value: '' }
-        // --- Optional debug flag ---
-        // { name: 'DEBUG', value: '0' }
+        // --- Azure AD / MSAL (authentication + user restriction) ---
+        { name: 'AZURE_CLIENT_ID', value: azureAdClientId }
+        { name: 'AZURE_TENANT_ID', value: azureAdTenantId }
+        { name: 'AZURE_CLIENT_SECRET', value: azureAdClientSecret }
+        { name: 'AZURE_REDIRECT_URI', value: effectiveRedirectUri }
+        { name: 'AZURE_AUTHORITY', value: azureAdTenantId != '' ? 'https://login.microsoftonline.com/${azureAdTenantId}' : '' }
+        { name: 'AZURE_SCOPES', value: 'User.Read' }
+        { name: 'AZURE_ALLOWED_DOMAINS', value: azureAllowedDomains }
+        { name: 'AZURE_ALLOWED_EMAILS', value: azureAllowedEmails }
       ]
     }
   }

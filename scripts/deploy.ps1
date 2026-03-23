@@ -48,6 +48,11 @@ param(
     [string]$Location = 'eastus',
     [string]$AppServicePlanSku = 'B1',
     [string]$AcrSku = 'Basic',
+    [string]$AzureAdClientId = '',       # Azure AD app registration client ID
+    [string]$AzureAdTenantId = '',       # Azure AD tenant ID
+    [string]$AzureAdClientSecret = '',   # Azure AD client secret
+    [string]$AzureAllowedDomains = '',   # Comma-separated allowed domains
+    [string]$AzureAllowedEmails = '',    # Comma-separated allowed emails
     [switch]$SkipBicep,        # Skip infra deployment (just redeploy app)
     [switch]$SkipDocker,       # Skip Docker build/push (just update settings)
     [switch]$ConfigureSettings  # Interactive App Settings configuration
@@ -167,10 +172,18 @@ if (-not $SkipBicep) {
     Write-Host "Deploying Bicep template: $BicepFile" -ForegroundColor Yellow
     Write-Host "  Parameters: appName=$AppName location=$Location appServicePlanSku=$AppServicePlanSku acrSku=$AcrSku" -ForegroundColor White
 
+    # Build Bicep parameters — include Azure AD params if provided
+    $bicepParams = "appName=$AppName location=$Location appServicePlanSku=$AppServicePlanSku acrSku=$AcrSku"
+    if ($AzureAdClientId -ne '')     { $bicepParams += " azureAdClientId=$AzureAdClientId" }
+    if ($AzureAdTenantId -ne '')     { $bicepParams += " azureAdTenantId=$AzureAdTenantId" }
+    if ($AzureAdClientSecret -ne '') { $bicepParams += " azureAdClientSecret=$AzureAdClientSecret" }
+    if ($AzureAllowedDomains -ne '') { $bicepParams += " azureAllowedDomains=$AzureAllowedDomains" }
+    if ($AzureAllowedEmails -ne '')  { $bicepParams += " azureAllowedEmails=$AzureAllowedEmails" }
+
     $deployOutput = az deployment group create `
         --resource-group $ResourceGroupName `
         --template-file $BicepFile `
-        --parameters appName=$AppName location=$Location appServicePlanSku=$AppServicePlanSku acrSku=$AcrSku `
+        --parameters $bicepParams `
         --query 'properties.outputs' `
         -o json 2>&1
 

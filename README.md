@@ -113,22 +113,77 @@ The dashboard is **modularized** for easy customization. See [docs/CUSTOMIZATION
 
 ## 📦 Deployment Options
 
-### Local
+### Local Development
 ```bash
 streamlit run streamlit_dashboard.py
 ```
 
-### Streamlit Cloud (Free)
-1. Push to GitHub
-2. Go to https://share.streamlit.io
-3. Connect repo
-4. Add secrets in dashboard settings
-
-### Docker
+### Docker (Local)
 ```bash
 docker build -t ae-dashboard .
 docker run -p 8501:8501 ae-dashboard
 ```
+
+### Azure Deployment (from your machine)
+
+Deploy to Azure App Service using the CLI. Requires Azure CLI, PowerShell 7+, and Docker.
+
+**Prerequisites:**
+```powershell
+az login                     # Sign into Azure
+az bicep install             # Install Bicep CLI (if not already)
+docker info                  # Verify Docker is running
+```
+
+**1. Create the resource group** (skip if already exists):
+```powershell
+az group create --name "doldata-rg" --location "eastus"
+```
+
+**2. Register an Azure AD app** (for user authentication):
+- Azure Portal > Microsoft Entra ID > App registrations > New registration
+- Name: `AE Dashboard`, Single tenant, Redirect URI: `https://ae-dashboard.azurewebsites.net`
+- Copy the **Client ID** and **Tenant ID** from the Overview page
+- Create a **Client secret** under Certificates & secrets
+- See [docs/AZURE_DEPLOYMENT_GUIDE.md](docs/AZURE_DEPLOYMENT_GUIDE.md) for detailed steps
+
+**3. Restrict access to specific users:**
+- Azure Portal > Microsoft Entra ID > Enterprise applications > find `AE Dashboard`
+- Properties > set **Assignment required?** = **Yes** > Save
+- Users and groups > Add the specific users who should have access
+
+**4. Deploy:**
+```powershell
+.\scripts\deploy.ps1 `
+    -ResourceGroupName "doldata-rg" `
+    -AppName "ae-dashboard" `
+    -AzureAdClientId "your-client-id" `
+    -AzureAdTenantId "your-tenant-id" `
+    -AzureAdClientSecret "your-client-secret" `
+    -AzureAllowedEmails "user1@company.com,user2@company.com"
+```
+
+This provisions infrastructure (Bicep), builds/pushes the Docker image (ACR), and configures the App Service.
+
+**5. Configure Salesforce credentials:**
+```powershell
+.\scripts\deploy.ps1 `
+    -ResourceGroupName "doldata-rg" `
+    -AppName "ae-dashboard" `
+    -SkipBicep -SkipDocker -ConfigureSettings
+```
+
+**6. Verify:** Visit `https://ae-dashboard.azurewebsites.net` — you should see the Microsoft login page.
+
+For code-only redeployments (infra already exists):
+```powershell
+.\scripts\deploy.ps1 `
+    -ResourceGroupName "doldata-rg" `
+    -AppName "ae-dashboard" `
+    -SkipBicep
+```
+
+See [docs/AZURE_DEPLOYMENT_GUIDE.md](docs/AZURE_DEPLOYMENT_GUIDE.md) for the full guide including troubleshooting, parameter reference, and CI/CD pipeline setup.
 
 ## 🔒 Security Notes
 
