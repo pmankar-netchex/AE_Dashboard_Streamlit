@@ -1,69 +1,75 @@
 <#
 .SYNOPSIS
-    End-to-end local deployment of the AE Dashboard to Azure App Service.
+    Deploy the AE Dashboard to Azure App Service (zip deploy).
 
 .DESCRIPTION
-    Provisions Azure infrastructure via Bicep, builds and pushes a Docker image to ACR,
-    configures App Settings, and verifies the deployment health endpoint.
+    Two-step deployment:
+      1. Deploy Bicep infrastructure (infra/main.bicep)
+      2. Zip-deploy the application code to Azure App Service
 
 .PARAMETER ResourceGroupName
-    (Mandatory) Existing Azure resource group to deploy into.
+    (Mandatory) Existing Azure resource group.
 
 .PARAMETER AppName
-    (Mandatory) Base name for all Azure resources (e.g. "ae-dashboard").
-    Drives naming: ACR = "${AppName -replace '-',''}acr", Key Vault = "${AppName}-kv".
+    (Mandatory) Base name for Azure resources (e.g. "ae-dashboard").
+
+.PARAMETER AppServicePlanId
+    (Mandatory) Full resource ID of the shared App Service Plan.
+    Example: /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/serverfarms/<plan>
 
 .PARAMETER Location
     Azure region. Defaults to 'eastus'.
 
-.PARAMETER AppServicePlanSku
-    App Service Plan SKU. Defaults to 'B1'. Must be Linux-capable.
+.PARAMETER AzureAdClientId
+    Azure AD app registration client ID.
 
-.PARAMETER AcrSku
-    Azure Container Registry SKU. Defaults to 'Basic'.
+.PARAMETER AzureAdTenantId
+    Azure AD tenant ID.
 
-.PARAMETER SkipBicep
-    Skip infrastructure deployment (just redeploy the app image/settings).
+.PARAMETER AzureAdClientSecret
+    Azure AD client secret.
 
-.PARAMETER SkipDocker
-    Skip Docker build and push (just update App Settings or restart).
+.PARAMETER AzureAllowedDomains
+    Comma-separated allowed domains.
+
+.PARAMETER AzureAllowedEmails
+    Comma-separated allowed emails.
+
+.PARAMETER SkipInfra
+    Skip Bicep infrastructure deployment.
+
+.PARAMETER SkipDeploy
+    Skip application code deployment.
 
 .PARAMETER ConfigureSettings
-    Interactively prompt for App Settings (Salesforce OAuth, Azure AD, etc.)
-    and push them to the App Service.
+    Interactively configure App Settings (Salesforce, Azure AD).
 
 .EXAMPLE
-    .\deploy.ps1 -ResourceGroupName "ae-dashboard-rg" -AppName "ae-dashboard"
+    .\deploy.ps1 -ResourceGroupName "doldata-rg" -AppName "ae-dashboard" `
+        -AppServicePlanId "/subscriptions/.../providers/Microsoft.Web/serverfarms/doldata-lead-gen-dev-plan"
 
 .EXAMPLE
-    .\deploy.ps1 -ResourceGroupName "ae-dashboard-rg" -AppName "ae-dashboard" -SkipBicep -ConfigureSettings
-
-.EXAMPLE
-    .\deploy.ps1 -ResourceGroupName "ae-dashboard-rg" -AppName "ae-dashboard" -SkipBicep -SkipDocker -ConfigureSettings
+    .\deploy.ps1 -ResourceGroupName "doldata-rg" -AppName "ae-dashboard" `
+        -AppServicePlanId "..." -SkipInfra
 #>
 
+[CmdletBinding(SupportsShouldProcess)]
 param(
-    [Parameter(Mandatory=$true)]  [string]$ResourceGroupName,
-    [Parameter(Mandatory=$true)]  [string]$AppName,
+    [Parameter(Mandatory)] [string]$ResourceGroupName,
+    [Parameter(Mandatory)] [string]$AppName,
+    [Parameter(Mandatory)] [string]$AppServicePlanId,
     [string]$Location = 'eastus',
-    [string]$AppServicePlanSku = 'B1',
-    [string]$AcrSku = 'Basic',
-    [string]$AzureAdClientId = '',       # Azure AD app registration client ID
-    [string]$AzureAdTenantId = '',       # Azure AD tenant ID
-    [string]$AzureAdClientSecret = '',   # Azure AD client secret
-    [string]$AzureAllowedDomains = '',   # Comma-separated allowed domains
-    [string]$AzureAllowedEmails = '',    # Comma-separated allowed emails
-    [switch]$SkipBicep,        # Skip infra deployment (just redeploy app)
-    [switch]$SkipDocker,       # Skip Docker build/push (just update settings)
-    [switch]$ConfigureSettings  # Interactive App Settings configuration
+    [string]$AzureAdClientId = '',
+    [string]$AzureAdTenantId = '',
+    [string]$AzureAdClientSecret = '',
+    [string]$AzureAllowedDomains = '',
+    [string]$AzureAllowedEmails = '',
+    [switch]$SkipInfra,
+    [switch]$SkipDeploy,
+    [switch]$ConfigureSettings
 )
 
-Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
 
 function Write-Section {
     param([string]$Title)
@@ -82,32 +88,24 @@ function Prompt-WithDefault {
     } else {
         $value = Read-Host "$PromptText$displayDefault"
     }
-    if ($value -eq '' -and $Default -ne '') {
-        return $Default
-    }
+    if ($value -eq '' -and $Default -ne '') { return $Default }
     return $value
 }
 
 # ============================================================
-# SECTION 1: PREREQUISITES CHECK
+# PREREQUISITES
 # ============================================================
 
 Write-Section "PREREQUISITES CHECK"
 
-# Check az CLI
 Write-Host "Checking Azure CLI..." -ForegroundColor Yellow
 if (-not (Get-Command 'az' -ErrorAction SilentlyContinue)) {
     Write-Error "Azure CLI ('az') not found. Install from https://docs.microsoft.com/cli/azure/install-azure-cli"
     exit 1
 }
 $azVersion = az version --query '"azure-cli"' -o tsv 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to query Azure CLI version. Ensure 'az' is on PATH."
-    exit 1
-}
 Write-Host "  az CLI version: $azVersion" -ForegroundColor Green
 
-# Check az login
 Write-Host "Checking Azure login status..." -ForegroundColor Yellow
 $accountJson = az account show -o json 2>&1
 if ($LASTEXITCODE -ne 0) {
@@ -118,48 +116,28 @@ $account = $accountJson | ConvertFrom-Json
 Write-Host "  Logged in as: $($account.user.name)" -ForegroundColor Green
 Write-Host "  Subscription: $($account.name) ($($account.id))" -ForegroundColor Green
 
-# Check Docker (only needed for build/push)
-if (-not $SkipDocker) {
-    Write-Host "Checking Docker..." -ForegroundColor Yellow
-    if (-not (Get-Command 'docker' -ErrorAction SilentlyContinue)) {
-        Write-Error "Docker not found. Install from https://docs.docker.com/get-docker/"
-        exit 1
-    }
-    $dockerInfo = docker info 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Docker daemon is not running. Start Docker Desktop or the Docker service."
-        exit 1
-    }
-    Write-Host "  Docker is running." -ForegroundColor Green
-}
-
-Write-Host "Prerequisites satisfied." -ForegroundColor Green
-
 # ============================================================
-# SECTION 2: DERIVE RESOURCE NAMES
+# RESOURCE NAMES
 # ============================================================
 
 Write-Section "RESOURCE NAMES"
 
-# ACR name: alphanumeric only (Bicep does the same: replace('-','') + 'acr')
-$AcrName = ($AppName -replace '-', '') + 'acr'
 $KeyVaultName = "$AppName-kv"
-$AppServicePlanName = "$AppName-plan"
 
 Write-Host "  App Service:      $AppName"           -ForegroundColor White
-Write-Host "  App Service Plan: $AppServicePlanName" -ForegroundColor White
-Write-Host "  ACR name:         $AcrName"            -ForegroundColor White
-Write-Host "  Key Vault:        $KeyVaultName"        -ForegroundColor White
-Write-Host "  Resource Group:   $ResourceGroupName"   -ForegroundColor White
+Write-Host "  Key Vault:        $KeyVaultName"       -ForegroundColor White
+Write-Host "  Resource Group:   $ResourceGroupName"  -ForegroundColor White
+Write-Host "  Plan (shared):    $AppServicePlanId"   -ForegroundColor White
 
 # ============================================================
-# SECTION 3: BICEP DEPLOYMENT
+# STEP 1: BICEP DEPLOYMENT
 # ============================================================
 
-if (-not $SkipBicep) {
-    Write-Section "BICEP INFRASTRUCTURE DEPLOYMENT"
+Write-Section "Step 1: Deploy Infrastructure"
 
-    # Locate template relative to repo root (script lives in scripts/)
+if ($SkipInfra) {
+    Write-Host "[SKIP] -SkipInfra specified." -ForegroundColor Yellow
+} else {
     $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $RepoRoot  = Split-Path -Parent $ScriptDir
     $BicepFile = Join-Path $RepoRoot 'infra' 'main.bicep'
@@ -170,118 +148,145 @@ if (-not $SkipBicep) {
     }
 
     Write-Host "Deploying Bicep template: $BicepFile" -ForegroundColor Yellow
-    Write-Host "  Parameters: appName=$AppName location=$Location appServicePlanSku=$AppServicePlanSku acrSku=$AcrSku" -ForegroundColor White
 
-    # Build Bicep parameters — include Azure AD params if provided
-    $bicepParams = "appName=$AppName location=$Location appServicePlanSku=$AppServicePlanSku acrSku=$AcrSku"
+    $bicepParams = "appName=$AppName location=$Location appServicePlanId=$AppServicePlanId"
     if ($AzureAdClientId -ne '')     { $bicepParams += " azureAdClientId=$AzureAdClientId" }
     if ($AzureAdTenantId -ne '')     { $bicepParams += " azureAdTenantId=$AzureAdTenantId" }
     if ($AzureAdClientSecret -ne '') { $bicepParams += " azureAdClientSecret=$AzureAdClientSecret" }
     if ($AzureAllowedDomains -ne '') { $bicepParams += " azureAllowedDomains=$AzureAllowedDomains" }
     if ($AzureAllowedEmails -ne '')  { $bicepParams += " azureAllowedEmails=$AzureAllowedEmails" }
 
-    $deployOutput = az deployment group create `
-        --resource-group $ResourceGroupName `
-        --template-file $BicepFile `
-        --parameters $bicepParams `
-        --query 'properties.outputs' `
-        -o json 2>&1
+    if ($PSCmdlet.ShouldProcess("$ResourceGroupName", "az deployment group create")) {
+        $deployOutput = az deployment group create `
+            --resource-group $ResourceGroupName `
+            --template-file $BicepFile `
+            --parameters $bicepParams `
+            --query 'properties.outputs' `
+            -o json 2>&1
 
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Bicep deployment failed:`n$deployOutput"
-        exit 1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Bicep deployment failed:`n$deployOutput"
+            exit 1
+        }
+
+        $outputs = $deployOutput | ConvertFrom-Json
+        $AppServiceUrl = $outputs.appServiceUrl.value
+        $KvNameOut     = $outputs.keyVaultName.value
+
+        Write-Host "[OK] Bicep deployment succeeded." -ForegroundColor Green
+        Write-Host "  App Service URL: $AppServiceUrl" -ForegroundColor Green
+        Write-Host "  Key Vault:       $KvNameOut"      -ForegroundColor Green
     }
-
-    Write-Host "Bicep deployment succeeded." -ForegroundColor Green
-
-    # Parse outputs
-    $outputs = $deployOutput | ConvertFrom-Json
-    $AcrLoginServer = $outputs.acrLoginServer.value
-    $AppServiceUrl  = $outputs.appServiceUrl.value
-    $KvNameOut      = $outputs.keyVaultName.value
-
-    Write-Host "  ACR Login Server: $AcrLoginServer" -ForegroundColor Green
-    Write-Host "  App Service URL:  $AppServiceUrl"  -ForegroundColor Green
-    Write-Host "  Key Vault:        $KvNameOut"       -ForegroundColor Green
-
-} else {
-    Write-Host "`n[SkipBicep] Skipping infrastructure deployment." -ForegroundColor Yellow
-
-    # Derive ACR login server without Bicep output (query existing ACR)
-    Write-Host "Querying existing ACR login server..." -ForegroundColor Yellow
-    $AcrLoginServer = az acr show --name $AcrName --resource-group $ResourceGroupName --query loginServer -o tsv 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Could not query ACR '$AcrName'. Docker push may fail."
-        $AcrLoginServer = "$AcrName.azurecr.io"
-    }
-    $AppServiceUrl = "https://$AppName.azurewebsites.net"
-    Write-Host "  ACR Login Server: $AcrLoginServer" -ForegroundColor White
-    Write-Host "  App Service URL:  $AppServiceUrl"  -ForegroundColor White
 }
 
 # ============================================================
-# SECTION 4: DOCKER BUILD + PUSH
+# STEP 2: ZIP DEPLOY
 # ============================================================
 
-if (-not $SkipDocker) {
-    Write-Section "DOCKER BUILD + PUSH"
+Write-Section "Step 2: Deploy Application Code"
 
-    $ImageTag = "$AcrLoginServer/${AppName}:latest"
-    Write-Host "Image tag: $ImageTag" -ForegroundColor Yellow
-
-    # ACR login
-    Write-Host "Authenticating with ACR '$AcrName'..." -ForegroundColor Yellow
-    az acr login --name $AcrName
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "ACR login failed for '$AcrName'."
-        exit 1
-    }
-    Write-Host "ACR login succeeded." -ForegroundColor Green
-
-    # Docker build from repo root
+if ($SkipDeploy) {
+    Write-Host "[SKIP] -SkipDeploy specified." -ForegroundColor Yellow
+} else {
     $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $RepoRoot  = Split-Path -Parent $ScriptDir
+    $TempZip   = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "ae-deploy-$(Get-Random).zip")
 
-    Write-Host "Building Docker image from: $RepoRoot" -ForegroundColor Yellow
-    docker build -t $ImageTag $RepoRoot
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Docker build failed."
-        exit 1
+    Write-Host "Packaging application from: $RepoRoot" -ForegroundColor Yellow
+
+    $ExcludePatterns = @(
+        [System.IO.Path]::Combine($RepoRoot, '.git'),
+        [System.IO.Path]::Combine($RepoRoot, '.venv'),
+        [System.IO.Path]::Combine($RepoRoot, 'venv'),
+        [System.IO.Path]::Combine($RepoRoot, '.env'),
+        [System.IO.Path]::Combine($RepoRoot, '.env.local'),
+        [System.IO.Path]::Combine($RepoRoot, 'infra'),
+        [System.IO.Path]::Combine($RepoRoot, 'scripts'),
+        [System.IO.Path]::Combine($RepoRoot, 'docs'),
+        [System.IO.Path]::Combine($RepoRoot, 'data'),
+        [System.IO.Path]::Combine($RepoRoot, '.sisyphus'),
+        [System.IO.Path]::Combine($RepoRoot, 'deploy-package')
+    )
+
+    $FilesToZip = Get-ChildItem -Path $RepoRoot -Recurse -File | Where-Object {
+        $filePath = $_.FullName
+
+        if ($filePath -match '__pycache__') { return $false }
+        if ($filePath -match '\.pyc$')      { return $false }
+        if ($_.Extension -eq '.zip')         { return $false }
+        if ($_.Extension -eq '.md')          { return $false }
+
+        foreach ($ex in $ExcludePatterns) {
+            if ($filePath -eq $ex) { return $false }
+            $exDir = $ex.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+            if ($filePath.StartsWith($exDir, [System.StringComparison]::OrdinalIgnoreCase)) { return $false }
+        }
+
+        return $true
     }
-    Write-Host "Docker build succeeded." -ForegroundColor Green
 
-    # Docker push
-    Write-Host "Pushing image to ACR..." -ForegroundColor Yellow
-    docker push $ImageTag
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Docker push failed."
-        exit 1
+    Write-Host "  Files selected: $($FilesToZip.Count)" -ForegroundColor Gray
+
+    if ($PSCmdlet.ShouldProcess($TempZip, "Compress-Archive")) {
+        $StageDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "ae-stage-$(Get-Random)")
+        New-Item -ItemType Directory -Path $StageDir | Out-Null
+
+        try {
+            foreach ($file in $FilesToZip) {
+                $relative = $file.FullName.Substring($RepoRoot.Length).TrimStart([System.IO.Path]::DirectorySeparatorChar)
+                $dest = [System.IO.Path]::Combine($StageDir, $relative)
+                $destDir = [System.IO.Path]::GetDirectoryName($dest)
+                if (-not (Test-Path $destDir)) {
+                    New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+                }
+                Copy-Item -LiteralPath $file.FullName -Destination $dest
+            }
+
+            Compress-Archive -Path "$StageDir${[System.IO.Path]::DirectorySeparatorChar}*" -DestinationPath $TempZip -Force
+            Write-Host "  Zip: $TempZip ($([math]::Round((Get-Item $TempZip).Length / 1MB, 1)) MB)" -ForegroundColor Gray
+        } finally {
+            Remove-Item -Recurse -Force $StageDir -ErrorAction SilentlyContinue
+        }
+
+        Write-Host "Deploying zip to '$AppName' ..." -ForegroundColor Yellow
+
+        az webapp deploy `
+            --resource-group $ResourceGroupName `
+            --name $AppName `
+            --src-path $TempZip `
+            --type zip `
+            --async false
+
+        $deployExitCode = $LASTEXITCODE
+        Remove-Item -LiteralPath $TempZip -ErrorAction SilentlyContinue
+
+        if ($deployExitCode -ne 0) {
+            Write-Error "Zip deployment failed (exit $deployExitCode)."
+            exit $deployExitCode
+        }
+
+        Write-Host "[OK] Application code deployed." -ForegroundColor Green
     }
-    Write-Host "Docker push succeeded: $ImageTag" -ForegroundColor Green
-
-} else {
-    Write-Host "`n[SkipDocker] Skipping Docker build and push." -ForegroundColor Yellow
 }
 
 # ============================================================
-# SECTION 5: APP SETTINGS CONFIGURATION
+# STEP 3: APP SETTINGS CONFIGURATION
 # ============================================================
 
 if ($ConfigureSettings) {
-    Write-Section "APP SETTINGS CONFIGURATION"
+    Write-Section "Step 3: App Settings Configuration"
 
-    Write-Host "Configuring Salesforce and Azure AD settings for '$AppName'." -ForegroundColor Yellow
-    Write-Host "Press Enter to accept defaults shown in [brackets]. Leave optional fields blank to skip.`n" -ForegroundColor White
+    Write-Host "Press Enter to accept defaults in [brackets]. Leave optional fields blank to skip.`n" -ForegroundColor White
 
     $settings = [ordered]@{}
 
-    # --- Salesforce OAuth (mandatory) ---
+    # --- Salesforce OAuth ---
     Write-Host "--- Salesforce OAuth (mandatory) ---" -ForegroundColor Cyan
 
     $sfClientId = Prompt-WithDefault "SALESFORCE_CLIENT_ID (Connected App Consumer Key)"
     if ($sfClientId -ne '') { $settings['SALESFORCE_CLIENT_ID'] = $sfClientId }
 
-    $sfClientSecret = Prompt-WithDefault "SALESFORCE_CLIENT_SECRET (Connected App Consumer Secret)" -Secret
+    $sfClientSecret = Prompt-WithDefault "SALESFORCE_CLIENT_SECRET" -Secret
     if ($sfClientSecret -ne '') { $settings['SALESFORCE_CLIENT_SECRET'] = $sfClientSecret }
 
     $defaultRedirectUri = "https://$AppName.azurewebsites.net"
@@ -291,17 +296,17 @@ if ($ConfigureSettings) {
     $sfSandbox = Prompt-WithDefault "SALESFORCE_SANDBOX (true/false)" -Default 'false'
     if ($sfSandbox -ne '') { $settings['SALESFORCE_SANDBOX'] = $sfSandbox }
 
-    # --- Salesforce OAuth (optional) ---
+    # --- Salesforce optional ---
     Write-Host "`n--- Salesforce OAuth (optional) ---" -ForegroundColor Cyan
 
-    $sfLoginUrl = Prompt-WithDefault "SALESFORCE_LOGIN_URL (custom domain, e.g. https://myorg.my.salesforce.com)" -Secret
+    $sfLoginUrl = Prompt-WithDefault "SALESFORCE_LOGIN_URL (custom domain)" -Secret
     if ($sfLoginUrl -ne '') { $settings['SALESFORCE_LOGIN_URL'] = $sfLoginUrl }
 
     $sfOauthScopes = Prompt-WithDefault "SALESFORCE_OAUTH_SCOPES" -Default 'api refresh_token offline_access'
     if ($sfOauthScopes -ne '') { $settings['SALESFORCE_OAUTH_SCOPES'] = $sfOauthScopes }
 
-    # --- Azure AD / MSAL (all optional) ---
-    Write-Host "`n--- Azure AD / MSAL (all optional — leave blank to skip) ---" -ForegroundColor Cyan
+    # --- Azure AD / MSAL ---
+    Write-Host "`n--- Azure AD / MSAL (optional) ---" -ForegroundColor Cyan
 
     $azClientId = Prompt-WithDefault "AZURE_CLIENT_ID" -Secret
     if ($azClientId -ne '') {
@@ -316,38 +321,29 @@ if ($ConfigureSettings) {
         $azRedirectUri = Prompt-WithDefault "AZURE_REDIRECT_URI" -Default "https://$AppName.azurewebsites.net"
         if ($azRedirectUri -ne '') { $settings['AZURE_REDIRECT_URI'] = $azRedirectUri }
 
-        $azAuthority = Prompt-WithDefault "AZURE_AUTHORITY (e.g. https://login.microsoftonline.com/TENANT_ID)" -Secret
+        $azAuthority = Prompt-WithDefault "AZURE_AUTHORITY" -Secret
         if ($azAuthority -ne '') { $settings['AZURE_AUTHORITY'] = $azAuthority }
 
-        $azScopes = Prompt-WithDefault "AZURE_SCOPES (space-separated)" -Default 'User.Read'
+        $azScopes = Prompt-WithDefault "AZURE_SCOPES" -Default 'User.Read'
         if ($azScopes -ne '') { $settings['AZURE_SCOPES'] = $azScopes }
 
-        $azAllowedDomains = Prompt-WithDefault "AZURE_ALLOWED_DOMAINS (comma-separated, e.g. company.com)" -Secret
+        $azAllowedDomains = Prompt-WithDefault "AZURE_ALLOWED_DOMAINS (comma-separated)" -Secret
         if ($azAllowedDomains -ne '') { $settings['AZURE_ALLOWED_DOMAINS'] = $azAllowedDomains }
 
-        $azAllowedEmails = Prompt-WithDefault "AZURE_ALLOWED_EMAILS (comma-separated specific users)" -Secret
+        $azAllowedEmails = Prompt-WithDefault "AZURE_ALLOWED_EMAILS (comma-separated)" -Secret
         if ($azAllowedEmails -ne '') { $settings['AZURE_ALLOWED_EMAILS'] = $azAllowedEmails }
     } else {
-        Write-Host "  Azure AD skipped (no AZURE_CLIENT_ID provided)." -ForegroundColor White
+        Write-Host "  Azure AD skipped." -ForegroundColor White
     }
 
-    # --- Key Vault (auto-set, no prompt) ---
+    # --- Key Vault ---
     Write-Host "`n--- Key Vault (auto-configured) ---" -ForegroundColor Cyan
     $settings['KEY_VAULT_NAME'] = $KeyVaultName
-    Write-Host "  KEY_VAULT_NAME = $KeyVaultName (auto-set, no prompt needed)" -ForegroundColor Green
+    Write-Host "  KEY_VAULT_NAME = $KeyVaultName" -ForegroundColor Green
 
-    # --- Debug (optional) ---
-    Write-Host "`n--- Debug (optional) ---" -ForegroundColor Cyan
-    $debugValue = Prompt-WithDefault "DEBUG (0 or 1, leave blank to disable)" -Default ''
-    if ($debugValue -ne '') { $settings['DEBUG'] = $debugValue }
+    if ($settings.Count -gt 0) {
+        Write-Host "`nApplying $($settings.Count) App Settings..." -ForegroundColor Yellow
 
-    # Build the --settings argument list
-    if ($settings.Count -eq 0) {
-        Write-Warning "No settings provided — skipping App Settings update."
-    } else {
-        Write-Host "`nApplying $($settings.Count) App Settings to '$AppName'..." -ForegroundColor Yellow
-
-        # Build key=value array for az cli
         $settingArgs = @()
         foreach ($kv in $settings.GetEnumerator()) {
             $settingArgs += "$($kv.Key)=$($kv.Value)"
@@ -363,54 +359,23 @@ if ($ConfigureSettings) {
             Write-Error "Failed to apply App Settings."
             exit 1
         }
-        Write-Host "App Settings applied successfully." -ForegroundColor Green
+        Write-Host "[OK] App Settings applied." -ForegroundColor Green
     }
-
 } else {
-    Write-Host "`n[ConfigureSettings not set] Skipping App Settings configuration." -ForegroundColor Yellow
-    Write-Host "  Run with -ConfigureSettings to configure Salesforce/Azure AD credentials." -ForegroundColor White
+    Write-Host "`n[ConfigureSettings not set] Run with -ConfigureSettings to set credentials." -ForegroundColor Yellow
 }
 
 # ============================================================
-# SECTION 6: CONTAINER CONFIGURATION
+# STEP 4: HEALTH VERIFICATION
 # ============================================================
 
-Write-Section "CONTAINER CONFIGURATION"
-
-$ImageTag = "$AcrLoginServer/${AppName}:latest"
-Write-Host "Configuring App Service to use image: $ImageTag" -ForegroundColor Yellow
-
-az webapp config container set `
-    --resource-group $ResourceGroupName `
-    --name $AppName `
-    --docker-custom-image-name $ImageTag `
-    --output none
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to configure container image on App Service."
-    exit 1
-}
-Write-Host "Container configuration applied." -ForegroundColor Green
-
-# ============================================================
-# SECTION 7: RESTART + HEALTH VERIFICATION
-# ============================================================
-
-Write-Section "RESTART + HEALTH VERIFICATION"
-
-Write-Host "Restarting App Service '$AppName'..." -ForegroundColor Yellow
-az webapp restart --resource-group $ResourceGroupName --name $AppName --output none
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning "Restart command returned non-zero. The app may still be starting."
-}
-Write-Host "Restart initiated." -ForegroundColor Green
+Write-Section "Step 4: Health Verification"
 
 $HealthUrl = "https://$AppName.azurewebsites.net/_stcore/health"
 $MaxAttempts = 10
 $RetryDelaySecs = 30
 
-Write-Host "`nPolling health endpoint: $HealthUrl" -ForegroundColor Yellow
-Write-Host "Up to $MaxAttempts attempts, ${RetryDelaySecs}s between retries..." -ForegroundColor White
+Write-Host "Polling: $HealthUrl (up to $MaxAttempts attempts, ${RetryDelaySecs}s interval)" -ForegroundColor Yellow
 
 $healthy = $false
 for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
@@ -419,36 +384,32 @@ for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
         $response = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
         $body = $response.Content.Trim()
         if ($response.StatusCode -eq 200 -and $body -eq 'ok') {
-            Write-Host " HEALTHY (200 ok)" -ForegroundColor Green
+            Write-Host " HEALTHY" -ForegroundColor Green
             $healthy = $true
             break
         } else {
             Write-Host " Status=$($response.StatusCode) Body='$body'" -ForegroundColor Yellow
         }
     } catch {
-        Write-Host " Failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host " $($_.Exception.Message)" -ForegroundColor Red
     }
-
     if ($attempt -lt $MaxAttempts) {
-        Write-Host "  Waiting ${RetryDelaySecs}s..." -ForegroundColor White
         Start-Sleep -Seconds $RetryDelaySecs
     }
 }
 
 # ============================================================
-# FINAL STATUS
+# SUMMARY
 # ============================================================
 
-Write-Section "DEPLOYMENT COMPLETE"
+Write-Section "Deployment Complete"
 
 if ($healthy) {
-    Write-Host "SUCCESS: App Service is healthy!" -ForegroundColor Green
+    Write-Host "SUCCESS: App is healthy!" -ForegroundColor Green
 } else {
-    Write-Warning "Health check did not return 'ok' after $MaxAttempts attempts."
-    Write-Warning "The app may still be starting. Check logs with:"
-    Write-Warning "  az webapp log tail --resource-group $ResourceGroupName --name $AppName"
+    Write-Warning "Health check did not pass after $MaxAttempts attempts."
+    Write-Warning "Check logs: az webapp log tail --resource-group $ResourceGroupName --name $AppName"
 }
 
-Write-Host "`nApp Service URL: https://$AppName.azurewebsites.net" -ForegroundColor Cyan
-Write-Host "View logs:       az webapp log tail --resource-group $ResourceGroupName --name $AppName" -ForegroundColor White
-Write-Host "Portal:          https://portal.azure.com/#resource/subscriptions/$($account.id)/resourceGroups/$ResourceGroupName/providers/Microsoft.Web/sites/$AppName/overview" -ForegroundColor White
+Write-Host "`nApp URL: https://$AppName.azurewebsites.net" -ForegroundColor Cyan
+Write-Host "Logs:    az webapp log tail --resource-group $ResourceGroupName --name $AppName" -ForegroundColor White
