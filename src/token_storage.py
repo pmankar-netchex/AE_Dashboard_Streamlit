@@ -35,7 +35,12 @@ def _get_kv_client():
 
     key_vault_name = os.environ["KEY_VAULT_NAME"]
     vault_url = f"https://{key_vault_name}.vault.azure.net"
-    _kv_client = SecretClient(vault_url=vault_url, credential=DefaultAzureCredential())
+    # Exclude EnvironmentCredential — AZURE_CLIENT_ID/SECRET env vars are for MSAL
+    # (the app registration), not the managed identity that has Key Vault access.
+    _kv_client = SecretClient(
+        vault_url=vault_url,
+        credential=DefaultAzureCredential(exclude_environment_credential=True),
+    )
     return _kv_client
 
 

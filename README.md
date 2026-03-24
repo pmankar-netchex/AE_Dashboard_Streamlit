@@ -92,11 +92,21 @@ Clean, organized folder structure. See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.
 
 ```
 ├── streamlit_dashboard.py         Main entry point
-├── src/                           Application modules (⚙️ customize here)
-├── scripts/                       Setup & run scripts
+├── startup.sh                     Azure App Service startup script
+├── src/                           Application modules
+│   ├── msal_auth.py               Azure AD / MSAL authentication
+│   ├── salesforce_oauth.py        Salesforce OAuth flow
+│   ├── token_storage.py           Token persistence (Key Vault or filesystem)
+│   ├── soql_registry.py           SOQL query definitions
+│   ├── data_engine.py             Data processing and dataframe assembly
+│   ├── meta_filters.py            Time period and filter logic
+│   └── dashboard_ui.py            UI components, CSS, charts
+├── infra/                         Azure Bicep infrastructure-as-code
+├── scripts/                       Deployment and setup scripts
 ├── docs/                          Documentation
-├── .env                           Your credentials
-└── requirements.txt               Dependencies
+├── .streamlit/config.toml         Streamlit server configuration
+├── .env                           Your credentials (not committed)
+└── requirements.txt               Python dependencies
 ```
 
 ## 🔧 Customization
@@ -105,11 +115,10 @@ The dashboard is **modularized** for easy customization. See [docs/CUSTOMIZATION
 
 **Quick examples:**
 
-- **Change stage name**: Edit `src/salesforce_queries.py` line 79 (`'Closed Won'`)
-- **Filter users**: Edit `src/salesforce_queries.py` line 23 (add Profile/Role filters)
-- **Meeting keywords**: Edit `src/salesforce_queries.py` line 143 (Subject LIKE conditions)
-- **Quota formula**: Edit `src/dashboard_calculations.py` line 55
-- **Colors/styling**: Edit `src/dashboard_ui.py` line 13 (CSS)
+- **Change SOQL queries**: Edit `src/soql_registry.py` (column definitions, query builder)
+- **Filter logic**: Edit `src/meta_filters.py` (time periods, filter parameters)
+- **Data processing**: Edit `src/data_engine.py` (dataframe assembly, manager/AE lists)
+- **Colors/styling**: Edit `src/dashboard_ui.py` (CSS, KPI widgets, charts)
 
 ## 📦 Deployment Options
 
@@ -164,6 +173,7 @@ This provisions infrastructure (Bicep), zip-deploys the application code, and co
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
     -AppName "netchex-ae-dashboard" `
+    -AppServicePlanId "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/serverfarms/<plan>" `
     -SkipInfra -SkipDeploy -ConfigureSettings
 ```
 
@@ -174,7 +184,13 @@ For code-only redeployments (infra already exists):
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
     -AppName "netchex-ae-dashboard" `
+    -AppServicePlanId "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/serverfarms/<plan>" `
     -SkipInfra
+```
+
+**Tip:** After updating App Settings manually (via `az webapp config appsettings set`), restart the app to pick up changes:
+```powershell
+az webapp restart --resource-group "doldata-rg" --name "netchex-ae-dashboard"
 ```
 
 See [docs/AZURE_DEPLOYMENT_GUIDE.md](docs/AZURE_DEPLOYMENT_GUIDE.md) for the full guide including troubleshooting, parameter reference, and CI/CD pipeline setup.
@@ -182,9 +198,10 @@ See [docs/AZURE_DEPLOYMENT_GUIDE.md](docs/AZURE_DEPLOYMENT_GUIDE.md) for the ful
 ## 🔒 Security Notes
 
 - Never commit `.env` (it's in .gitignore)
-- **OAuth** – no passwords stored; users sign in via Salesforce
-- Username/password – credentials in env vars only
-- Enable HTTPS for cloud deployments
+- **Azure AD** – MSAL authentication gates access; restrict users via Enterprise App assignments + email/domain allowlists
+- **Salesforce OAuth** – no passwords stored; users sign in via Salesforce
+- **Key Vault** – Salesforce refresh tokens stored in Azure Key Vault (via App Service managed identity); falls back to local filesystem for dev
+- **HTTPS** – enforced by Azure App Service (`httpsOnly: true` in Bicep)
 
 ## 📈 Performance
 
@@ -210,15 +227,12 @@ See [docs/AZURE_DEPLOYMENT_GUIDE.md](docs/AZURE_DEPLOYMENT_GUIDE.md) for the ful
 
 ## 📚 Documentation
 
+- **[docs/AZURE_DEPLOYMENT_GUIDE.md](docs/AZURE_DEPLOYMENT_GUIDE.md)** - Full Azure deployment guide (Bicep, zip deploy, CI/CD)
+- **[docs/AZURE_AD_SETUP.md](docs/AZURE_AD_SETUP.md)** - Azure AD / MSAL authentication setup
+- **[docs/SALESFORCE_CONNECTED_APP_SETUP.md](docs/SALESFORCE_CONNECTED_APP_SETUP.md)** - Salesforce OAuth setup
+- **[docs/CUSTOMIZATION_GUIDE.md](docs/CUSTOMIZATION_GUIDE.md)** - How to customize queries, UI, and logic
+- **[docs/STREAMLIT_SETUP_GUIDE.md](docs/STREAMLIT_SETUP_GUIDE.md)** - Local development setup
 - **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** - Folder organization
-- **[docs/CUSTOMIZATION_GUIDE.md](docs/CUSTOMIZATION_GUIDE.md)** - How to customize
-- **[docs/SALESFORCE_CONNECTED_APP_SETUP.md](docs/SALESFORCE_CONNECTED_APP_SETUP.md)** - OAuth setup
-
-See [docs/STREAMLIT_SETUP_GUIDE.md](docs/STREAMLIT_SETUP_GUIDE.md) for:
-- Detailed installation steps
-- SOQL query customization
-- Deployment options
-- Advanced features
 
 ## 🆚 vs Native Salesforce
 
