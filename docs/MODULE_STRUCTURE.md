@@ -10,9 +10,7 @@ AE_Dashboard_Streamlit/
 │   ├── data_engine.py            # ⚙️ Query execution, error isolation, DataFrame builder
 │   ├── meta_filters.py           # ⚙️ Time period helpers, filter param builder
 │   ├── dashboard_ui.py           # ⚙️ KPI widgets, charts, heatmap, table, tooltips
-│   ├── salesforce_oauth.py       # Salesforce OAuth 2.0 flow
-│   ├── msal_auth.py              # Azure AD / MSAL authentication
-│   └── token_storage.py          # Persistent OAuth token storage
+│   └── salesforce_oauth.py       # Salesforce OAuth 2.0 flow
 ├── scripts/
 │   ├── setup.sh                  # Setup script (venv + deps)
 │   ├── run.sh                    # Run script
@@ -20,8 +18,8 @@ AE_Dashboard_Streamlit/
 ├── docs/
 │   ├── MODULE_STRUCTURE.md       # This file
 │   ├── CUSTOMIZATION_GUIDE.md    # How to customize queries and UI
-│   ├── AZURE_AD_SETUP.md         # Azure AD / MSAL setup guide
-│   ├── MSAL_FEATURES.md          # MSAL feature reference
+│   ├── AZURE_AD_SETUP.md         # Note: Azure AD / MSAL removed from app
+│   ├── MSAL_FEATURES.md          # Note: MSAL removed from app
 │   ├── SALESFORCE_CONNECTED_APP_SETUP.md
 │   └── STREAMLIT_SETUP_GUIDE.md
 ├── implementation-specs.md       # Canonical metric definitions and SOQL spec
@@ -63,7 +61,7 @@ All visual rendering functions:
 - `TOOLTIPS` dict — plain-language description of every column for non-technical reviewers
 
 ### `streamlit_dashboard.py` — App Entry Point
-- Auth gate: MSAL (Azure AD) → Salesforce OAuth, in that order
+- Auth: Salesforce OAuth (tokens in Streamlit session state only) or username/password from `.env`
 - Sidebar meta filters (Manager, AE Name, Time Period)
 - Three tabs: **Dashboard** · **SOQL Management** · **Salesforce Connection**
 - SOQL Management tab: inline query editor with Test (must succeed) → Save workflow; override dict passed to data engine on next refresh
@@ -82,4 +80,3 @@ All visual rendering functions:
 | Add a chart | `src/dashboard_ui.py` | Extend `display_charts()` |
 | Add an AE filter dimension | `src/data_engine.py` | Extend `get_ae_names_list()` and update sidebar |
 | Change Salesforce auth method | `src/salesforce_oauth.py` | OAuth config; or add username/password to `.env` |
-| Enable/disable Azure AD auth | `.env` | Add/remove `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` |

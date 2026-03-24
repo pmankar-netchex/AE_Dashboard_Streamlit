@@ -18,28 +18,6 @@ Open `http://localhost:8501` and click "Connect with Salesforce".
 
 ## Authentication
 
-### Microsoft Azure AD (Optional)
-
-**NEW:** The dashboard supports optional Azure AD / MSAL authentication to control who can access the dashboard.
-
-- When enabled, users must sign in with their Microsoft account **before** accessing the dashboard
-- Then they connect to Salesforce as usual
-- Perfect for enterprise deployments requiring centralized access control
-
-**Setup:** See [docs/AZURE_AD_SETUP.md](docs/AZURE_AD_SETUP.md) for complete configuration guide.
-
-**Quick Enable:**
-```bash
-# Add to .env after setting up Azure AD app registration
-AZURE_CLIENT_ID=your_azure_client_id
-AZURE_TENANT_ID=your_tenant_id
-AZURE_CLIENT_SECRET=your_azure_secret
-AZURE_REDIRECT_URI=http://localhost:8501
-
-# Optional: Restrict to specific domains
-AZURE_ALLOWED_DOMAINS=company.com
-```
-
 ### Salesforce OAuth Login (Recommended)
 
 The dashboard supports **Salesforce OAuth** – users see a "Connect with Salesforce" button and sign in via the browser (no passwords in config).
@@ -61,12 +39,11 @@ SALESFORCE_SANDBOX=false
 
 3. **Run** – users click "Connect with Salesforce" to log in.
 
-**🔒 Persistent Authentication:** After your first login, the dashboard saves your refresh token locally in `~/.salesforce_tokens/ae_dashboard.json`. You won't need to reconnect unless:
-- You click "Disconnect"
-- The refresh token expires (typically after 90 days of inactivity, or per your org's session settings)
-- The token becomes invalid
+**Session-only OAuth:** Access and refresh tokens are kept in **Streamlit session state** (server-side, tied to the browser session). They are **not** saved to disk. Users stay connected while the session stays alive; after closing the tab, session timeout, or server restart, they must connect again. The app still refreshes the access token using the refresh token **during** that session when possible.
 
-The dashboard automatically refreshes your access token when needed, so you can just refresh the page and keep working.
+Optional **Disconnect** clears the session and removes any legacy on-disk file from older versions (`~/.salesforce_tokens/ae_dashboard.json`) if present.
+
+Microsoft Azure AD / MSAL was **removed** from this app. See [docs/AZURE_AD_SETUP.md](docs/AZURE_AD_SETUP.md) for a short note and alternatives at the hosting layer.
 
 ### Username/Password (Legacy)
 
@@ -127,13 +104,139 @@ streamlit run streamlit_dashboard.py
 ### Docker
 ```bash
 docker build -t ae-dashboard .
-docker run -p 8501:8501 ae-dashboard
+# PORT defaults to 8501; map the same port on the host
+docker run --rm -p 8501:8501 \
+  -e SALESFORCE_CLIENT_ID=... \
+  -e SALESFORCE_CLIENT_SECRET=... \
+  -e SALESFORCE_REDIRECT_URI=http://localhost:8501 \
+  ae-dashboard
 ```
+
+The production-oriented `Dockerfile` at the repo root binds Streamlit to `0.0.0.0`, uses headless mode, and reads the listen port from the `PORT` environment variable (default `8501`), which matches Azure Container Apps.
+
+### Deploy to Azure (Container Apps)
+
+This repo includes **Docker**, **Bicep** under `infra/`, and **GitHub Actions** (`.github/workflows/deploy-azure.yml`) for build/push/update. Infrastructure targets an **existing resource group** (you create it first); the template deploys Log Analytics, Azure Container Registry (ACR), a Container Apps environment, and a Container App with **external HTTPS ingress**. The first revision uses Microsoft’s public sample image on **port 80** so the app is healthy until CI runs; each deploy then switches ingress **target port to 8501** for Streamlit and updates the image from ACR.
+
+**Prerequisites**
+
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) logged in (`az login`)
+- An Azure subscription
+- A resource group in your chosen region (example: `doldata-rg` in **eastus** — Azure region id is `eastus`, not `east-us`)
+- A GitHub repository for this code
+
+**One-time: resource group (if it does not exist yet)**
+
+```bash
+az group create --name doldata-rg --location eastus
+```
+
+**One-time: GitHub → Azure authentication**
+
+*Option A — OIDC (recommended)*
+
+1. In Microsoft Entra ID, register an **App registration** (single-tenant is typical).
+2. Under **Certificates & secrets** → **Federated credentials**, add a credential for GitHub Actions, for example:
+   - **Issuer**: `https://token.actions.githubusercontent.com`
+   - **Subject identifier**: `repo:YOUR_GITHUB_ORG/YOUR_REPO_NAME:ref:refs/heads/main`
+   - For manual **Run workflow** from other branches, add additional federated credentials with the matching `ref:refs/heads/BRANCH` subjects, or use a [GitHub Environment](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment) and subject `repo:ORG/REPO:environment:YOUR_ENV_NAME`.
+3. Grant the app’s service principal access to your Azure resources (simplest: **Contributor** on the target resource group, which includes push/update rights for ACR and Container Apps in that group).
+
+Add these **GitHub repository secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Description |
+|--------|-------------|
+| `AZURE_CLIENT_ID` | App registration (client) ID |
+| `AZURE_TENANT_ID` | Directory (tenant) ID |
+| `AZURE_SUBSCRIPTION_ID` | Target subscription ID |
+
+*Option B — Service principal (fallback)*
+
+Create a client secret on the same app registration and store the full JSON output of `az ad sp create-for-rbac` (or equivalent) as **`AZURE_CREDENTIALS`**. In the workflow, replace the **Azure Login (OIDC)** step with:
+
+```yaml
+- uses: azure/login@v2
+  with:
+    creds: ${{ secrets.AZURE_CREDENTIALS }}
+```
+
+**One-time: deploy infrastructure (Bicep)**
+
+From the repo root, using your resource group and a parameters file (copy and edit `infra/parameters.example.json` if you like):
+
+```bash
+az deployment group create \
+  --resource-group doldata-rg \
+  --template-file infra/main.bicep \
+  --parameters @infra/parameters.example.json
+```
+
+**Important:** `minReplicas` defaults to **1** in the template so the app does not scale to zero (Streamlit avoids painful cold starts). To allow scale-to-zero, set `minReplicas` to `0` in your parameters file and redeploy.
+
+**Contributor vs role assignments:** Granting **AcrPull** via `Microsoft.Authorization/roleAssignments` requires **`Microsoft.Authorization/roleAssignments/write`**, which **Contributor** does not have (only **Owner** or **User Access Administrator** do). This Bicep template therefore enables the **ACR admin account** and configures the Container App to pull with **username + password** (password stored as a Container App secret), which works with **Contributor** on the resource group. To harden later, an admin can disable the ACR admin user, enable a **system-assigned identity** on the Container App, assign **AcrPull** to that identity on the registry, and reconfigure the app to use registry authentication with that identity instead of the stored password.
+
+Capture outputs (names and FQDN):
+
+```bash
+az deployment group show \
+  --resource-group doldata-rg \
+  --name DEPLOYMENT_NAME \
+  --query properties.outputs -o json
+```
+
+Set these **GitHub Actions variables** (Settings → Secrets and variables → Actions → Variables) to match the deployment outputs:
+
+| Variable | Source (Bicep output) |
+|----------|----------------------|
+| `AZURE_RESOURCE_GROUP` | Your RG name (e.g. `doldata-rg`) |
+| `ACR_NAME` | `acrName` |
+| `CONTAINER_APP_NAME` | `containerAppName` |
+
+**Ongoing deploys (one-click)**
+
+- Push to **`main`**, or
+- Actions → **Deploy to Azure Container Apps** → **Run workflow**
+
+The workflow builds the root `Dockerfile`, pushes `YOUR_ACR.azurecr.io/ae-dashboard:<git-sha>` and `:latest`, runs `az containerapp update` for the new image, then `az containerapp ingress update --target-port 8501` so Streamlit’s listen port matches ingress.
+
+**Environment variables / secrets for Salesforce**
+
+Never commit real secrets. For local Docker, use `-e` or an env file (not copied into the image; `.dockerignore` excludes `.env`). For Container Apps:
+
+- **Portal**: Container App → **Settings** → **Environment variables** and **Secrets** (reference secrets from env vars).
+- **CLI**: create a secret, then bind it (example pattern):
+
+```bash
+az containerapp secret set \
+  --name YOUR_CONTAINER_APP_NAME \
+  --resource-group YOUR_RG \
+  --secrets "salesforce-client-secret=REPLACE_WITH_VALUE"
+
+az containerapp update \
+  --name YOUR_CONTAINER_APP_NAME \
+  --resource-group YOUR_RG \
+  --set-env-vars "SALESFORCE_CLIENT_SECRET=secretref:salesforce-client-secret"
+```
+
+Expected application variables (see root `.env.example` and `scripts/.env.example` for detail):
+
+| Variable | Notes |
+|----------|--------|
+| `SALESFORCE_CLIENT_ID` | Connected App consumer key |
+| `SALESFORCE_CLIENT_SECRET` | Use a secret reference in production |
+| `SALESFORCE_REDIRECT_URI` | **Must exactly match** the callback URL in Salesforce and your app URL (e.g. `https://<container-app-fqdn>/` — use the HTTPS URL shown on the Container App **Overview**; include or omit a trailing slash to match the Connected App callback **exactly**) |
+| `SALESFORCE_SANDBOX` | `true` / `false` |
+| `SALESFORCE_LOGIN_URL` | Optional custom login domain |
+| `SALESFORCE_OAUTH_SCOPES` | Optional; defaults suit typical Connected Apps |
+
+Use **GitHub Actions secrets** for the pipeline’s Azure login only; Salesforce credentials belong in Container Apps secrets/env, not in the repo.
+
+**Optional:** Azure Key Vault integration is not included here to keep scope small; add it later if you want centralized secret storage.
 
 ## 🔒 Security Notes
 
 - Never commit `.env` (it's in .gitignore)
-- **OAuth** – no passwords stored; users sign in via Salesforce
+- **OAuth** – no passwords stored; users sign in via Salesforce; tokens stay in session only
 - Username/password – credentials in env vars only
 - Enable HTTPS for cloud deployments
 
@@ -164,6 +267,7 @@ docker run -p 8501:8501 ae-dashboard
 - **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** - Folder organization
 - **[docs/CUSTOMIZATION_GUIDE.md](docs/CUSTOMIZATION_GUIDE.md)** - How to customize
 - **[docs/SALESFORCE_CONNECTED_APP_SETUP.md](docs/SALESFORCE_CONNECTED_APP_SETUP.md)** - OAuth setup
+- **[docs/AZURE_AD_SETUP.md](docs/AZURE_AD_SETUP.md)** - Why Azure AD / MSAL is not in this app anymore
 
 See [docs/STREAMLIT_SETUP_GUIDE.md](docs/STREAMLIT_SETUP_GUIDE.md) for:
 - Detailed installation steps

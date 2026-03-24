@@ -829,8 +829,7 @@ Some critical information like .env.example try to maintain as is so there's min
 ### Step 1 — Foundation & Codebase Cleanup
 
 - Review existing codebase and reuse the following:
-  - MSAL Authentication
-  - Salesforce Connection setup
+  - Salesforce OAuth and connection setup (session-scoped tokens; optional username/password via env)
   - Deployment-related items (Bicep files, etc.)
 - Remove older guides and structures to build new ones later.
 - Do not introduce new SOQL or UI at this step.

@@ -7,6 +7,10 @@ This guide walks you through creating a **Connected App** in Salesforce for OAut
 - A Salesforce account (Production or Sandbox)
 - System Administrator or equivalent permissions
 
+## Token storage
+
+After a successful OAuth login, the dashboard keeps the access and refresh tokens in **Streamlit session state** (server memory for that browser session). Tokens are **not** written to `~/.salesforce_tokens/` or other local files. Users reconnect after a new session or server restart unless they use username/password credentials in `.env`.
+
 ---
 
 ## Step 1: Open App Manager

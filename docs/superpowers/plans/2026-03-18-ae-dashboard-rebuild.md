@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rebuild the AE Performance Dashboard from scratch using the canonical spec in `implementation-specs.md`, reusing existing MSAL auth, Salesforce OAuth, and deployment scaffolding.
+> **Update (auth):** MSAL / `msal_auth.py`, disk token persistence / `token_storage.py`, and the `msal` package were **removed** afterward. Auth is **Salesforce OAuth** with **session-only** tokens in `streamlit_dashboard.py`, plus optional username/password via `.env`. Treat embedded snippets below as historical unless you are reconciling an old branch.
 
-**Architecture:** Single `streamlit_dashboard.py` entry point with multi-tab layout; all SOQL lives in `src/soql_registry.py` (parameterized, per-column); data assembly in `src/data_engine.py`; UI rendering in `src/dashboard_ui.py`; existing auth modules (`msal_auth.py`, `salesforce_oauth.py`, `token_storage.py`) kept as-is.
+**Goal:** Rebuild the AE Performance Dashboard from scratch using the canonical spec in `implementation-specs.md`, reusing existing Salesforce OAuth and deployment scaffolding.
 
-**Tech Stack:** Python 3.9+, Streamlit 1.31+, simple-salesforce, pandas, plotly, python-dotenv, msal
+**Architecture:** Single `streamlit_dashboard.py` entry point with multi-tab layout; all SOQL lives in `src/soql_registry.py` (parameterized, per-column); data assembly in `src/data_engine.py`; UI rendering in `src/dashboard_ui.py`; Salesforce OAuth in `src/salesforce_oauth.py` (tokens in Streamlit session state only).
+
+**Tech Stack:** Python 3.9+, Streamlit 1.31+, simple-salesforce, pandas, plotly, python-dotenv
 
 ---
 
@@ -19,9 +21,7 @@
 | `src/data_engine.py` | **Create** | Execute queries, build unified DataFrame, error isolation |
 | `src/meta_filters.py` | **Create** | Filter state, date range helpers, fiscal year utils |
 | `src/dashboard_ui.py` | **Rewrite** | KPI widgets, table with heatmap/sort/search, charts |
-| `src/msal_auth.py` | **Keep** | Azure AD auth — no changes |
-| `src/salesforce_oauth.py` | **Keep** | Salesforce OAuth — no changes |
-| `src/token_storage.py` | **Keep** | Token persistence — no changes |
+| `src/salesforce_oauth.py` | **Keep** | Salesforce OAuth — no changes (session-scoped tokens in app code) |
 | `src/salesforce_queries.py` | **Delete** | Replaced by `soql_registry.py` + `data_engine.py` |
 | `src/dashboard_calculations.py` | **Delete** | Replaced by `data_engine.py` |
 | `requirements.txt` | **Update** | Add `openpyxl` for Excel-like table features |
@@ -34,7 +34,7 @@
 **Files:**
 - Delete: `src/salesforce_queries.py`
 - Delete: `src/dashboard_calculations.py`
-- Keep: `src/msal_auth.py`, `src/salesforce_oauth.py`, `src/token_storage.py`
+- Keep: `src/salesforce_oauth.py` (and session-based wiring in `streamlit_dashboard.py`)
 - Keep: `src/__init__.py`
 
 - [ ] **Step 1: Delete the two old modules**
@@ -43,12 +43,12 @@
 rm src/salesforce_queries.py src/dashboard_calculations.py
 ```
 
-- [ ] **Step 2: Verify kept auth files are untouched**
+- [ ] **Step 2: Verify Salesforce OAuth module**
 
 ```bash
-git diff src/msal_auth.py src/salesforce_oauth.py src/token_storage.py
+git diff src/salesforce_oauth.py
 ```
-Expected: no output (no changes)
+Expected: no output (no changes) when following the original plan; current repo may differ after later auth refactors.
 
 - [ ] **Step 3: Commit**
 
@@ -1228,6 +1228,8 @@ Entry point. Three tabs: Dashboard, SOQL Management, Salesforce Connection. Orch
 
 - [ ] **Step 1: Write `streamlit_dashboard.py`** (full replacement)
 
+The snippet below is **historical** (includes MSAL and `token_storage`). Current app: Salesforce OAuth only, session-scoped tokens — see repository `streamlit_dashboard.py`.
+
 ```python
 import os
 from datetime import datetime
@@ -1720,7 +1722,6 @@ pandas>=2.1.4
 simple-salesforce>=1.12.5
 plotly>=5.18.0
 python-dotenv>=1.0.0
-msal>=1.28.0
 requests>=2.31.0
 ```
 

@@ -162,17 +162,11 @@ def fmt_currency(val) -> str:
 
 ## Authentication
 
-### Enable Azure AD (MSAL) — optional
+### Salesforce OAuth (default)
 
-Add to `.env`:
-```bash
-AZURE_CLIENT_ID=your_client_id
-AZURE_TENANT_ID=your_tenant_id
-AZURE_CLIENT_SECRET=your_secret
-AZURE_REDIRECT_URI=http://localhost:8501
-```
+OAuth tokens are stored in **Streamlit session state** only (not on disk). See [SALESFORCE_CONNECTED_APP_SETUP.md](SALESFORCE_CONNECTED_APP_SETUP.md) and the main README.
 
-See [AZURE_AD_SETUP.md](AZURE_AD_SETUP.md) for full setup steps.
+Optional Azure AD / MSAL in front of the app was **removed**; see [AZURE_AD_SETUP.md](AZURE_AD_SETUP.md) for a short note.
 
 ### Add username/password Salesforce auth (fallback)
 

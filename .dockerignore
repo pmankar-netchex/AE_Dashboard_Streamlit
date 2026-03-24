@@ -1,0 +1,44 @@
+# Secrets and local env
+.env
+.env.*
+!.env.example
+scripts/.env
+scripts/.env.*
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Git / IDE
+.git/
+.gitignore
+.cursor/
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Docs and infra (not needed in image)
+*.md
+docs/
+implementation_specs/
+infra/
+
+# CI
+.github/
+
+# Misc
+*.log

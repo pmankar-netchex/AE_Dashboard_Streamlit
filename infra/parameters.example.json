@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus"
+    },
+    "appNamePrefix": {
+      "value": "aedash"
+    },
+    "acrName": {
+      "value": ""
+    },
+    "acrSku": {
+      "value": "Basic"
+    },
+    "minReplicas": {
+      "value": 1
+    },
+    "maxReplicas": {
+      "value": 3
+    },
+    "containerCpu": {
+      "value": "0.5"
+    },
+    "containerMemory": {
+      "value": "1.0Gi"
+    },
+    "containerImageRepository": {
+      "value": "ae-dashboard"
+    }
+  }
+}

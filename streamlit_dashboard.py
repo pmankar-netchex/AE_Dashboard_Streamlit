@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,19 +20,6 @@ from src.salesforce_oauth import (
     exchange_code_for_tokens,
     refresh_access_token,
     create_salesforce_client,
-)
-from src.token_storage import save_tokens, load_tokens, clear_tokens
-from src.msal_auth import (
-    is_msal_configured,
-    is_authenticated,
-    get_authorization_url as get_msal_auth_url,
-    exchange_code_for_token,
-    get_user_info,
-    cache_user,
-    clear_user_cache,
-    render_login_screen as render_msal_login,
-    display_user_info,
-    check_user_authorization,
 )
 from src.meta_filters import resolve_time_period, build_filter_params
 from src.data_engine import (
@@ -57,6 +45,17 @@ st.set_page_config(
 )
 apply_custom_css()
 
+_LEGACY_SF_TOKEN_FILE = Path.home() / ".salesforce_tokens" / "ae_dashboard.json"
+
+
+def _clear_legacy_saved_salesforce_tokens():
+    """Remove on-disk tokens from older versions (session-only auth now)."""
+    if _LEGACY_SF_TOKEN_FILE.exists():
+        try:
+            _LEGACY_SF_TOKEN_FILE.unlink()
+        except OSError:
+            pass
+
 
 # ── Salesforce Connection ──────────────────────────────────────────────────────
 
@@ -73,11 +72,6 @@ def get_salesforce_connection():
                     st.session_state["sf_oauth"]["instance_url"] = tokens.get(
                         "instance_url", oauth["instance_url"]
                     )
-                    save_tokens(
-                        tokens["access_token"],
-                        oauth["refresh_token"],
-                        st.session_state["sf_oauth"]["instance_url"],
-                    )
                     return create_salesforce_client(
                         st.session_state["sf_oauth"]["instance_url"], tokens["access_token"]
                     )
@@ -85,35 +79,6 @@ def get_salesforce_connection():
                     del st.session_state["sf_oauth"]
             else:
                 del st.session_state["sf_oauth"]
-
-    if is_oauth_configured():
-        saved = load_tokens()
-        if saved:
-            try:
-                sf = create_salesforce_client(saved["instance_url"], saved["access_token"])
-                sf.query("SELECT Id FROM User LIMIT 1")
-                st.session_state["sf_oauth"] = saved
-                return sf
-            except Exception:
-                if saved.get("refresh_token"):
-                    try:
-                        tokens = refresh_access_token(saved["refresh_token"])
-                        new_oauth = {
-                            "access_token": tokens["access_token"],
-                            "refresh_token": saved["refresh_token"],
-                            "instance_url": tokens.get("instance_url", saved["instance_url"]),
-                        }
-                        save_tokens(
-                            new_oauth["access_token"],
-                            new_oauth["refresh_token"],
-                            new_oauth["instance_url"],
-                        )
-                        st.session_state["sf_oauth"] = new_oauth
-                        return create_salesforce_client(
-                            new_oauth["instance_url"], new_oauth["access_token"]
-                        )
-                    except Exception:
-                        clear_tokens()
 
     username = os.environ.get("SALESFORCE_USERNAME")
     password = os.environ.get("SALESFORCE_PASSWORD")
@@ -165,12 +130,6 @@ def handle_oauth_callback() -> bool:
         }
         st.session_state["sf_oauth"] = oauth_data
         st.session_state["last_oauth_code"] = code
-        if oauth_data.get("refresh_token"):
-            save_tokens(
-                oauth_data["access_token"],
-                oauth_data["refresh_token"],
-                oauth_data["instance_url"],
-            )
         st.query_params.clear()
         return True
     except Exception as e:
@@ -231,7 +190,6 @@ def render_sidebar_filters(sf) -> dict:
 
 def render_dashboard_tab(sf):
     params = render_sidebar_filters(sf)
-    display_user_info()
 
     st.title("📊 AE Performance Dashboard")
 
@@ -445,7 +403,7 @@ def render_connection_tab(sf):
         st.write("**Authenticated User:** Unable to retrieve")
 
     if st.button("Disconnect Salesforce"):
-        clear_tokens()
+        _clear_legacy_saved_salesforce_tokens()
         if "sf_oauth" in st.session_state:
             del st.session_state["sf_oauth"]
         st.rerun()
@@ -454,48 +412,6 @@ def render_connection_tab(sf):
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
-    # MSAL authentication gate
-    if is_msal_configured():
-        if st.query_params.get("code") and not st.query_params.get("state"):
-            code = st.query_params.get("code")
-            code = code[0] if isinstance(code, list) else code
-            try:
-                token_response = exchange_code_for_token(code)
-                user_info = get_user_info(token_response.get("access_token"))
-                cache_user(token_response, user_info)
-                st.query_params.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"MSAL authentication failed: {e}")
-                st.query_params.clear()
-                st.stop()
-
-        if not is_authenticated():
-            st.title("📊 AE Performance Dashboard")
-            render_msal_login()
-            return
-
-        allowed_domains = [
-            d.strip()
-            for d in os.environ.get("AZURE_ALLOWED_DOMAINS", "").split(",")
-            if d.strip()
-        ]
-        allowed_emails = [
-            e.strip()
-            for e in os.environ.get("AZURE_ALLOWED_EMAILS", "").split(",")
-            if e.strip()
-        ]
-        if allowed_domains or allowed_emails:
-            if not check_user_authorization(
-                allowed_domains=allowed_domains or None,
-                allowed_emails=allowed_emails or None,
-            ):
-                st.error("Access Denied")
-                if st.button("Sign Out"):
-                    clear_user_cache()
-                    st.rerun()
-                st.stop()
-
     # Salesforce OAuth callback
     if st.query_params.get("code") and st.query_params.get("state"):
         if handle_oauth_callback():
