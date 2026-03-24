@@ -37,8 +37,5 @@ docs/
 implementation_specs/
 infra/
 
-# CI
-.github/
-
 # Misc
 *.log

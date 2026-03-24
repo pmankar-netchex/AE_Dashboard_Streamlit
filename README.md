@@ -69,8 +69,10 @@ Clean, organized folder structure. See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.
 
 ```
 ├── streamlit_dashboard.py         Main entry point
+├── Dockerfile                     Container image for Azure / Docker
+├── infra/                         Azure Bicep (optional IaC)
 ├── src/                           Application modules (⚙️ customize here)
-├── scripts/                       Setup & run scripts
+├── scripts/                       Setup, run, deploy_containerapp_local.sh
 ├── docs/                          Documentation
 ├── .env                           Your credentials
 └── requirements.txt               Dependencies
@@ -116,53 +118,23 @@ The production-oriented `Dockerfile` at the repo root binds Streamlit to `0.0.0.
 
 ### Deploy to Azure (Container Apps)
 
-This repo includes **Docker**, **Bicep** under `infra/`, and **GitHub Actions** (`.github/workflows/deploy-azure.yml`) for build/push/update. Infrastructure targets an **existing resource group** (you create it first); the template deploys Log Analytics, Azure Container Registry (ACR), a Container Apps environment, and a Container App with **external HTTPS ingress**. The first revision uses Microsoft’s public sample image on **port 80** so the app is healthy until CI runs; each deploy then switches ingress **target port to 8501** for Streamlit and updates the image from ACR.
+**Bicep** under `infra/` provisions an **existing resource group**: Log Analytics, Azure Container Registry (ACR), a Container Apps environment, and a Container App with **external HTTPS ingress**. The first revision uses Microsoft’s public sample image on **port 80**; after you run the local deploy script, the app uses your image and ingress **target port 8501** for Streamlit.
 
 **Prerequisites**
 
-- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) logged in (`az login`)
-- An Azure subscription
-- A resource group in your chosen region (example: `doldata-rg` in **eastus** — Azure region id is `eastus`, not `east-us`)
-- A GitHub repository for this code
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) (`az login`)
+- A subscription and a resource group (example: `doldata-rg` in **eastus**)
+- [Docker](https://docs.docker.com/get-docker/) on the machine you deploy from
 
-**One-time: resource group (if it does not exist yet)**
+**One-time: resource group (if needed)**
 
 ```bash
 az group create --name doldata-rg --location eastus
 ```
 
-**One-time: GitHub → Azure authentication**
+**One-time: infrastructure (Bicep)**
 
-*Option A — OIDC (recommended)*
-
-1. In Microsoft Entra ID, register an **App registration** (single-tenant is typical).
-2. Under **Certificates & secrets** → **Federated credentials**, add a credential for GitHub Actions, for example:
-   - **Issuer**: `https://token.actions.githubusercontent.com`
-   - **Subject identifier**: `repo:YOUR_GITHUB_ORG/YOUR_REPO_NAME:ref:refs/heads/main`
-   - For manual **Run workflow** from other branches, add additional federated credentials with the matching `ref:refs/heads/BRANCH` subjects, or use a [GitHub Environment](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment) and subject `repo:ORG/REPO:environment:YOUR_ENV_NAME`.
-3. Grant the app’s service principal access to your Azure resources (simplest: **Contributor** on the target resource group, which includes push/update rights for ACR and Container Apps in that group).
-
-Add these **GitHub repository secrets** (Settings → Secrets and variables → Actions):
-
-| Secret | Description |
-|--------|-------------|
-| `AZURE_CLIENT_ID` | App registration (client) ID |
-| `AZURE_TENANT_ID` | Directory (tenant) ID |
-| `AZURE_SUBSCRIPTION_ID` | Target subscription ID |
-
-*Option B — Service principal (fallback)*
-
-Create a client secret on the same app registration and store the full JSON output of `az ad sp create-for-rbac` (or equivalent) as **`AZURE_CREDENTIALS`**. In the workflow, replace the **Azure Login (OIDC)** step with:
-
-```yaml
-- uses: azure/login@v2
-  with:
-    creds: ${{ secrets.AZURE_CREDENTIALS }}
-```
-
-**One-time: deploy infrastructure (Bicep)**
-
-From the repo root, using your resource group and a parameters file (copy and edit `infra/parameters.example.json` if you like):
+From the repo root (copy and edit `infra/parameters.example.json` if you like):
 
 ```bash
 az deployment group create \
@@ -171,11 +143,11 @@ az deployment group create \
   --parameters @infra/parameters.example.json
 ```
 
-**Important:** `minReplicas` defaults to **1** in the template so the app does not scale to zero (Streamlit avoids painful cold starts). To allow scale-to-zero, set `minReplicas` to `0` in your parameters file and redeploy.
+**Important:** `minReplicas` defaults to **1** so the app does not scale to zero (Streamlit avoids painful cold starts). Set `minReplicas` to `0` in parameters if you want scale-to-zero.
 
-**Contributor vs role assignments:** Granting **AcrPull** via `Microsoft.Authorization/roleAssignments` requires **`Microsoft.Authorization/roleAssignments/write`**, which **Contributor** does not have (only **Owner** or **User Access Administrator** do). This Bicep template therefore enables the **ACR admin account** and configures the Container App to pull with **username + password** (password stored as a Container App secret), which works with **Contributor** on the resource group. To harden later, an admin can disable the ACR admin user, enable a **system-assigned identity** on the Container App, assign **AcrPull** to that identity on the registry, and reconfigure the app to use registry authentication with that identity instead of the stored password.
+**Contributor vs role assignments:** Granting **AcrPull** via `Microsoft.Authorization/roleAssignments` requires **Owner** or **User Access Administrator**. **Contributor** cannot create those assignments. This template enables the **ACR admin user** and stores the registry password as a Container App secret so **Contributor** on the resource group can deploy. To harden later, an admin can switch to managed identity + **AcrPull** and disable the ACR admin user.
 
-Capture outputs (names and FQDN):
+Save deployment outputs (you will pass them to the deploy script or use `--from-deployment`):
 
 ```bash
 az deployment group show \
@@ -184,27 +156,35 @@ az deployment group show \
   --query properties.outputs -o json
 ```
 
-Set these **GitHub Actions variables** (Settings → Secrets and variables → Actions → Variables) to match the deployment outputs:
+**Ongoing: deploy from your laptop**
 
-| Variable | Source (Bicep output) |
-|----------|----------------------|
-| `AZURE_RESOURCE_GROUP` | Your RG name (e.g. `doldata-rg`) |
-| `ACR_NAME` | `acrName` |
-| `CONTAINER_APP_NAME` | `containerAppName` |
+Uses the root `Dockerfile`, **`az login`**, Docker build/push to ACR, and `az containerapp update` (same flow as the removed CI pipeline, without GitHub secrets):
 
-**Ongoing deploys (one-click)**
+```bash
+az login
+# optional: az account set --subscription <id>
+./scripts/deploy_containerapp_local.sh \
+  --resource-group doldata-rg \
+  --from-deployment YOUR_DEPLOYMENT_NAME
+```
 
-- Push to **`main`**, or
-- Actions → **Deploy to Azure Container Apps** → **Run workflow**
+Or pass ACR and Container App names explicitly:
 
-The workflow builds the root `Dockerfile`, pushes `YOUR_ACR.azurecr.io/ae-dashboard:<git-sha>` and `:latest`, runs `az containerapp update` for the new image, then `az containerapp ingress update --target-port 8501` so Streamlit’s listen port matches ingress.
+```bash
+./scripts/deploy_containerapp_local.sh \
+  --resource-group doldata-rg \
+  --acr-name YOUR_ACR_NAME \
+  --app-name YOUR_CONTAINER_APP_NAME
+```
+
+You need permission to **push to ACR** and **update** the Container App (e.g. Contributor on the RG). The script tags the image with the short git SHA (or a timestamp) and updates `:latest`.
 
 **Environment variables / secrets for Salesforce**
 
-Never commit real secrets. For local Docker, use `-e` or an env file (not copied into the image; `.dockerignore` excludes `.env`). For Container Apps:
+Never commit real secrets. For local Docker, use `-e` or an env file (`.dockerignore` excludes `.env`). For Container Apps:
 
-- **Portal**: Container App → **Settings** → **Environment variables** and **Secrets** (reference secrets from env vars).
-- **CLI**: create a secret, then bind it (example pattern):
+- **Portal**: Container App → **Settings** → **Environment variables** and **Secrets**
+- **CLI** (example):
 
 ```bash
 az containerapp secret set \
@@ -218,20 +198,20 @@ az containerapp update \
   --set-env-vars "SALESFORCE_CLIENT_SECRET=secretref:salesforce-client-secret"
 ```
 
-Expected application variables (see root `.env.example` and `scripts/.env.example` for detail):
+Expected variables (see `.env.example` and `scripts/.env.example`):
 
 | Variable | Notes |
 |----------|--------|
 | `SALESFORCE_CLIENT_ID` | Connected App consumer key |
-| `SALESFORCE_CLIENT_SECRET` | Use a secret reference in production |
-| `SALESFORCE_REDIRECT_URI` | **Must exactly match** the callback URL in Salesforce and your app URL (e.g. `https://<container-app-fqdn>/` — use the HTTPS URL shown on the Container App **Overview**; include or omit a trailing slash to match the Connected App callback **exactly**) |
+| `SALESFORCE_CLIENT_SECRET` | Prefer a secret reference in Azure |
+| `SALESFORCE_REDIRECT_URI` | **Must exactly match** the Connected App callback and your app URL (e.g. `https://<container-app-fqdn>/` — match trailing slash **exactly**) |
 | `SALESFORCE_SANDBOX` | `true` / `false` |
-| `SALESFORCE_LOGIN_URL` | Optional custom login domain |
-| `SALESFORCE_OAUTH_SCOPES` | Optional; defaults suit typical Connected Apps |
+| `SALESFORCE_LOGIN_URL` | Optional |
+| `SALESFORCE_OAUTH_SCOPES` | Optional |
 
-Use **GitHub Actions secrets** for the pipeline’s Azure login only; Salesforce credentials belong in Container Apps secrets/env, not in the repo.
+Keep Salesforce credentials in Container Apps (or Key Vault), not in git.
 
-**Optional:** Azure Key Vault integration is not included here to keep scope small; add it later if you want centralized secret storage.
+**Optional:** Azure Key Vault is not wired in this template; add it if you want centralized secrets.
 
 ## 🔒 Security Notes
 

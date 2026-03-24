@@ -35,10 +35,10 @@ param containerCpu string = '0.5'
 @description('Memory per replica (e.g. 1.0Gi). Must match a valid Consumption-plan combination with CPU.')
 param containerMemory string = '1.0Gi'
 
-@description('Public image used only for the first revision until CI/CD pushes to ACR and updates the app.')
+@description('Public image used only for the first revision until you push a real image (e.g. deploy_containerapp_local.sh) and update the app.')
 param initialContainerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
-@description('Image repository name inside ACR (must match GitHub Actions env IMAGE_NAME).')
+@description('Image repository name inside ACR (must match scripts/deploy_containerapp_local.sh default ae-dashboard).')
 param containerImageRepository string = 'ae-dashboard'
 
 var logAnalyticsName = '${appNamePrefix}-law'
@@ -109,7 +109,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       ]
       ingress: {
         external: true
-        // Sample image listens on 80; GitHub Actions sets 8501 after the real image is deployed.
+        // Sample image listens on 80; local deploy script sets target port 8501 after the real image is deployed.
         targetPort: 80
         transport: 'auto'
       }

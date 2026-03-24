@@ -14,9 +14,12 @@ AE_Dashboard_Streamlit/
 │   ├── meta_filters.py            # Time period & filter helpers
 │   └── dashboard_ui.py            # Display, charts, KPIs, styling
 │
+├── Dockerfile                     # Production image (Azure / local Docker)
+├── infra/                         # Azure Bicep (ACR, Container Apps)
 ├── scripts/                       # Setup & deployment
 │   ├── setup.sh                   # One-time setup (venv, deps, .env)
 │   ├── run.sh                     # Run the dashboard
+│   ├── deploy_containerapp_local.sh  # Build/push to ACR + update Container App
 │   └── .env.example               # Credentials template
 │
 ├── docs/                          # Documentation
@@ -38,9 +41,10 @@ AE_Dashboard_Streamlit/
 | Folder | Purpose | Customize? |
 |--------|---------|------------|
 | `src/` | Application code | ✓ Yes — SOQL registry, data engine, UI |
-| `scripts/` | Setup & run scripts | Rarely |
+| `infra/` | Azure Bicep (ACR, Container Apps) | When changing cloud resources |
+| `scripts/` | Setup, run, Azure local deploy | Rarely |
 | `docs/` | Documentation | No |
-| Root | Entry point, config | No |
+| Root | Entry point, `Dockerfile`, config | `Dockerfile` when deps/port change |
 
 ## Quick Access
 
@@ -62,7 +66,7 @@ AE_Dashboard_Streamlit/
 2. **Configure**: Edit `.env` with credentials
 3. **Customize**: Edit files in `src/` (see `docs/CUSTOMIZATION_GUIDE.md`)
 4. **Run**: `./scripts/run.sh`
-5. **Deploy**: See `docs/STREAMLIT_SETUP_GUIDE.md`
+5. **Deploy**: Azure Container Apps — see **README** (Bicep + `scripts/deploy_containerapp_local.sh`); other hosts — `docs/STREAMLIT_SETUP_GUIDE.md`
 
 ## Benefits of This Structure
 
