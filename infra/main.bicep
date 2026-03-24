@@ -63,7 +63,7 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     siteConfig: {
       linuxFxVersion: 'PYTHON|3.11'
-      appCommandLine: 'startup.sh'
+      appCommandLine: 'python -m streamlit run streamlit_dashboard.py --server.port 8000 --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false'
       alwaysOn: true
       webSocketsEnabled: true
       http20Enabled: true

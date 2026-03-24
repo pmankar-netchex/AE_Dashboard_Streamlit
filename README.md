@@ -135,7 +135,7 @@ az group create --name "doldata-rg" --location "eastus"
 
 **2. Register an Azure AD app** (for user authentication):
 - Azure Portal > Microsoft Entra ID > App registrations > New registration
-- Name: `AE Dashboard`, Single tenant, Redirect URI: `https://ae-dashboard.azurewebsites.net`
+- Name: `AE Dashboard`, Single tenant, Redirect URI: `https://netchex-ae-dashboard.azurewebsites.net`
 - Copy the **Client ID** and **Tenant ID** from the Overview page
 - Create a **Client secret** under Certificates & secrets
 - See [docs/AZURE_DEPLOYMENT_GUIDE.md](docs/AZURE_DEPLOYMENT_GUIDE.md) for detailed steps
@@ -149,7 +149,7 @@ az group create --name "doldata-rg" --location "eastus"
 ```powershell
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
-    -AppName "ae-dashboard" `
+    -AppName "netchex-ae-dashboard" `
     -AppServicePlanId "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/serverfarms/<plan>" `
     -AzureAdClientId "your-client-id" `
     -AzureAdTenantId "your-tenant-id" `
@@ -163,17 +163,17 @@ This provisions infrastructure (Bicep), zip-deploys the application code, and co
 ```powershell
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
-    -AppName "ae-dashboard" `
+    -AppName "netchex-ae-dashboard" `
     -SkipInfra -SkipDeploy -ConfigureSettings
 ```
 
-**6. Verify:** Visit `https://ae-dashboard.azurewebsites.net` — you should see the Microsoft login page.
+**6. Verify:** Visit `https://netchex-ae-dashboard.azurewebsites.net` — you should see the Microsoft login page.
 
 For code-only redeployments (infra already exists):
 ```powershell
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
-    -AppName "ae-dashboard" `
+    -AppName "netchex-ae-dashboard" `
     -SkipInfra
 ```
 

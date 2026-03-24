@@ -62,7 +62,7 @@ This is the identity the app uses to authenticate users via MSAL.
      ```
      https://<your-app-name>.azurewebsites.net
      ```
-     (e.g., `https://ae-dashboard.azurewebsites.net`)
+     (e.g., `https://netchex-ae-dashboard.azurewebsites.net`)
 
 3. Click **Register**
 
@@ -108,7 +108,7 @@ This is the primary mechanism for limiting who can access the dashboard.
 ```powershell
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
-    -AppName "ae-dashboard" `
+    -AppName "netchex-ae-dashboard" `
     -AppServicePlanId "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/serverfarms/<plan>" `
     -AzureAdClientId "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" `
     -AzureAdTenantId "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy" `
@@ -126,7 +126,7 @@ This will:
 ```powershell
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
-    -AppName "ae-dashboard" `
+    -AppName "netchex-ae-dashboard" `
     -AppServicePlanId "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/serverfarms/<plan>" `
     -AzureAdClientId "..." `
     -AzureAdTenantId "..." `
@@ -142,7 +142,7 @@ The `-ConfigureSettings` flag will interactively prompt for Salesforce OAuth cre
 ```powershell
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
-    -AppName "ae-dashboard" `
+    -AppName "netchex-ae-dashboard" `
     -SkipInfra
 ```
 
@@ -151,7 +151,7 @@ The `-ConfigureSettings` flag will interactively prompt for Salesforce OAuth cre
 ```powershell
 .\scripts\deploy.ps1 `
     -ResourceGroupName "doldata-rg" `
-    -AppName "ae-dashboard" `
+    -AppName "netchex-ae-dashboard" `
     -SkipInfra -SkipDeploy -ConfigureSettings
 ```
 
@@ -164,11 +164,11 @@ The Salesforce Connected App credentials must be set as App Settings. You can do
 ```powershell
 az webapp config appsettings set `
     --resource-group "doldata-rg" `
-    --name "ae-dashboard" `
+    --name "netchex-ae-dashboard" `
     --settings `
         SALESFORCE_CLIENT_ID="your-sf-client-id" `
         SALESFORCE_CLIENT_SECRET="your-sf-client-secret" `
-        SALESFORCE_REDIRECT_URI="https://ae-dashboard.azurewebsites.net" `
+        SALESFORCE_REDIRECT_URI="https://netchex-ae-dashboard.azurewebsites.net" `
         SALESFORCE_SANDBOX="false"
 ```
 
@@ -179,7 +179,7 @@ See [SALESFORCE_CONNECTED_APP_SETUP.md](SALESFORCE_CONNECTED_APP_SETUP.md) for c
 ## Step 6: Verify the Deployment
 
 1. Wait 1-2 minutes for the app to start
-2. Visit `https://ae-dashboard.azurewebsites.net`
+2. Visit `https://netchex-ae-dashboard.azurewebsites.net`
 3. You should be redirected to the Microsoft login page
 4. Sign in with an assigned user account
 5. After login, the AE Dashboard should load
@@ -188,12 +188,12 @@ See [SALESFORCE_CONNECTED_APP_SETUP.md](SALESFORCE_CONNECTED_APP_SETUP.md) for c
 
 Check logs:
 ```powershell
-az webapp log tail --resource-group "doldata-rg" --name "ae-dashboard"
+az webapp log tail --resource-group "doldata-rg" --name "netchex-ae-dashboard"
 ```
 
 Health endpoint:
 ```
-https://ae-dashboard.azurewebsites.net/_stcore/health
+https://netchex-ae-dashboard.azurewebsites.net/_stcore/health
 ```
 
 ---
@@ -217,7 +217,7 @@ Access is controlled at two layers:
 ```powershell
 az webapp config appsettings set `
     --resource-group "doldata-rg" `
-    --name "ae-dashboard" `
+    --name "netchex-ae-dashboard" `
     --settings AZURE_ALLOWED_EMAILS="user1@company.com,user2@company.com"
 ```
 
@@ -287,7 +287,7 @@ Set these in Azure DevOps (Pipeline > Edit > Variables):
 | Variable | Description |
 |----------|-------------|
 | `AZURE_SERVICE_CONNECTION` | Service connection to Azure subscription |
-| `APP_NAME` | App Service name (e.g., `ae-dashboard`) |
+| `APP_NAME` | App Service name (e.g., `netchex-ae-dashboard`) |
 | `RESOURCE_GROUP_NAME` | Resource group name |
 
 > **Note:** The pipeline deploys code changes only. Infrastructure changes (Bicep) and App Settings are managed via `deploy.ps1`.

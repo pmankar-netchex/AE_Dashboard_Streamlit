@@ -456,7 +456,7 @@ def render_connection_tab(sf):
 def main():
     # MSAL authentication gate
     if is_msal_configured():
-        if st.query_params.get("code") and not st.query_params.get("state"):
+        if st.query_params.get("code") and not is_authenticated():
             code = st.query_params.get("code")
             code = code[0] if isinstance(code, list) else code
             try:

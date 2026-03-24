@@ -67,8 +67,8 @@ Make the AE Dashboard deployable to Azure App Service with infrastructure-as-cod
 - Updated `requirements.txt` — adds `azure-identity`, `azure-keyvault-secrets`
 
 ### Definition of Done
-- [ ] `docker build -t ae-dashboard .` succeeds
-- [ ] `docker run -p 8501:8501 ae-dashboard` starts and `curl http://localhost:8501/_stcore/health` returns `ok`
+- [ ] `docker build -t netchex-ae-dashboard .` succeeds
+- [ ] `docker run -p 8501:8501 netchex-ae-dashboard` starts and `curl http://localhost:8501/_stcore/health` returns `ok`
 - [ ] `az bicep build --file infra/main.bicep` succeeds (valid Bicep syntax)
 - [ ] `token_storage.py` works without `KEY_VAULT_NAME` (filesystem fallback for local dev)
 - [ ] All env vars from `.env.example` are documented in deploy script as App Settings
@@ -352,7 +352,7 @@ Max Concurrent: 4 (Wave 1)
   - Create `infra/main.bicep` with the following Azure resources:
 
   **Parameters** (all with sensible defaults):
-  - `appName` (string, required) — base name for all resources (e.g., `ae-dashboard`)
+  - `appName` (string, required) — base name for all resources (e.g., `netchex-ae-dashboard`)
   - `location` (string, default: `resourceGroup().location`)
   - `appServicePlanSku` (string, default: `B1`) — minimum for Linux containers + Always On
   - `acrSku` (string, default: `Basic`)
@@ -698,7 +698,7 @@ Max Concurrent: 4 (Wave 1)
   - [ ] Base image is `python:3.11-slim`
   - [ ] `EXPOSE 8501` present
   - [ ] `HEALTHCHECK` configured with `/_stcore/health`
-  - [ ] `docker build -t ae-dashboard .` succeeds
+  - [ ] `docker build -t netchex-ae-dashboard .` succeeds
   - [ ] Container starts and health check passes
 
   **QA Scenarios (MANDATORY):**
@@ -708,10 +708,10 @@ Max Concurrent: 4 (Wave 1)
     Tool: Bash
     Preconditions: Docker daemon running, Tasks 1 and 2 complete
     Steps:
-      1. Run: docker build -t ae-dashboard-test . 2>&1
+      1. Run: docker build -t netchex-ae-dashboard-test . 2>&1
       2. Assert: exit code 0
       3. Assert: output contains 'Successfully built' or 'Successfully tagged' or 'naming to docker.io'
-      4. Run: docker images ae-dashboard-test --format '{{.Size}}'
+      4. Run: docker images netchex-ae-dashboard-test --format '{{.Size}}'
       5. Assert: image exists (non-empty output)
     Expected Result: Image builds without errors
     Failure Indicators: pip install failure, COPY failure, syntax error in Dockerfile
@@ -719,9 +719,9 @@ Max Concurrent: 4 (Wave 1)
 
   Scenario: Container starts and serves Streamlit
     Tool: Bash
-    Preconditions: ae-dashboard-test image built
+    Preconditions: netchex-ae-dashboard-test image built
     Steps:
-      1. Run: docker run -d -p 8501:8501 --name ae-test-container ae-dashboard-test
+      1. Run: docker run -d -p 8501:8501 --name ae-test-container netchex-ae-dashboard-test
       2. Wait: 45 seconds (Streamlit cold start)
       3. Run: curl -sf http://localhost:8501/_stcore/health
       4. Assert: output is 'ok'
@@ -734,9 +734,9 @@ Max Concurrent: 4 (Wave 1)
 
   Scenario: .env is NOT in the Docker image
     Tool: Bash
-    Preconditions: ae-dashboard-test image built
+    Preconditions: netchex-ae-dashboard-test image built
     Steps:
-      1. Run: docker run --rm ae-dashboard-test ls -la /app/.env 2>&1
+      1. Run: docker run --rm netchex-ae-dashboard-test ls -la /app/.env 2>&1
       2. Assert: exit code != 0 (file not found)
       3. Assert: output contains 'No such file'
     Expected Result: .env file is excluded from image by .dockerignore
@@ -747,7 +747,7 @@ Max Concurrent: 4 (Wave 1)
   **Commit**: YES
   - Message: `feat: add Dockerfile for Azure App Service deployment`
   - Files: `Dockerfile`
-  - Pre-commit: `docker build -t ae-dashboard .`
+  - Pre-commit: `docker build -t netchex-ae-dashboard .`
 
 - [ ] 6. PowerShell Deployment Script (`scripts/deploy.ps1`)
 
@@ -916,7 +916,7 @@ Max Concurrent: 4 (Wave 1)
     - name: azureServiceConnection
       value: '$(AZURE_SERVICE_CONNECTION)'  # Set in Azure DevOps pipeline variables
     - name: acrRepository
-      value: '$(ACR_REPOSITORY)'             # e.g., ae-dashboard
+      value: '$(ACR_REPOSITORY)'             # e.g., netchex-ae-dashboard
     - name: appName
       value: '$(APP_NAME)'                   # Azure App Service name
     - name: resourceGroupName
@@ -1091,7 +1091,7 @@ Max Concurrent: 4 (Wave 1)
   Output: `Bicep [PASS/FAIL] | Python [PASS/FAIL] | PowerShell [PASS/FAIL] | YAML [PASS/FAIL] | Secrets [CLEAN/FOUND] | VERDICT`
 
 - [ ] F3. **Real QA — Docker Build + Container Test** — `unspecified-high`
-  Build Docker image: `docker build -t ae-dashboard .` — must succeed. Run container: `docker run -d -p 8501:8501 --name ae-test ae-dashboard`. Wait 30s for startup. Health check: `curl -s http://localhost:8501/_stcore/health` — must return `ok`. Verify Streamlit serves HTML: `curl -s http://localhost:8501 | grep -q "streamlit"`. Verify token_storage filesystem fallback: `docker exec ae-test python -c "from src.token_storage import load_tokens; assert load_tokens() == {}"`. Stop container: `docker stop ae-test && docker rm ae-test`. Save all output to `.sisyphus/evidence/final-qa/`.
+  Build Docker image: `docker build -t netchex-ae-dashboard .` — must succeed. Run container: `docker run -d -p 8501:8501 --name ae-test netchex-ae-dashboard`. Wait 30s for startup. Health check: `curl -s http://localhost:8501/_stcore/health` — must return `ok`. Verify Streamlit serves HTML: `curl -s http://localhost:8501 | grep -q "streamlit"`. Verify token_storage filesystem fallback: `docker exec ae-test python -c "from src.token_storage import load_tokens; assert load_tokens() == {}"`. Stop container: `docker stop ae-test && docker rm ae-test`. Save all output to `.sisyphus/evidence/final-qa/`.
   Output: `Build [PASS/FAIL] | Start [PASS/FAIL] | Health [PASS/FAIL] | Serve [PASS/FAIL] | Tokens [PASS/FAIL] | VERDICT`
 
 - [ ] F4. **Scope Fidelity Check** — `deep`
@@ -1117,10 +1117,10 @@ Max Concurrent: 4 (Wave 1)
 ### Verification Commands
 ```bash
 # Docker build succeeds
-docker build -t ae-dashboard .
+docker build -t netchex-ae-dashboard .
 
 # Container serves Streamlit
-docker run -d -p 8501:8501 --name ae-test ae-dashboard
+docker run -d -p 8501:8501 --name ae-test netchex-ae-dashboard
 sleep 30
 curl -s http://localhost:8501/_stcore/health  # Expected: "ok"
 docker stop ae-test && docker rm ae-test

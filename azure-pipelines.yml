@@ -6,7 +6,7 @@
 #
 # Required pipeline variables (set in Azure DevOps UI):
 #   AZURE_SERVICE_CONNECTION - Service connection name for Azure
-#   APP_NAME                 - Azure App Service name (e.g., ae-dashboard)
+#   APP_NAME                 - Azure App Service name (e.g., netchex-ae-dashboard)
 #   RESOURCE_GROUP_NAME      - Azure Resource Group name
 
 trigger:

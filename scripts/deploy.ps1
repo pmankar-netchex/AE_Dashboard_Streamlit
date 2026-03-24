@@ -11,7 +11,7 @@
     (Mandatory) Existing Azure resource group.
 
 .PARAMETER AppName
-    (Mandatory) Base name for Azure resources (e.g. "ae-dashboard").
+    (Mandatory) Base name for Azure resources (e.g. "netchex-ae-dashboard").
 
 .PARAMETER AppServicePlanId
     (Mandatory) Full resource ID of the shared App Service Plan.
@@ -45,11 +45,11 @@
     Interactively configure App Settings (Salesforce, Azure AD).
 
 .EXAMPLE
-    .\deploy.ps1 -ResourceGroupName "doldata-rg" -AppName "ae-dashboard" `
+    .\deploy.ps1 -ResourceGroupName "doldata-rg" -AppName "netchex-ae-dashboard" `
         -AppServicePlanId "/subscriptions/.../providers/Microsoft.Web/serverfarms/doldata-lead-gen-dev-plan"
 
 .EXAMPLE
-    .\deploy.ps1 -ResourceGroupName "doldata-rg" -AppName "ae-dashboard" `
+    .\deploy.ps1 -ResourceGroupName "doldata-rg" -AppName "netchex-ae-dashboard" `
         -AppServicePlanId "..." -SkipInfra
 #>
 
@@ -149,27 +149,39 @@ if ($SkipInfra) {
 
     Write-Host "Deploying Bicep template: $BicepFile" -ForegroundColor Yellow
 
-    $bicepParams = "appName=$AppName location=$Location appServicePlanId=$AppServicePlanId"
-    if ($AzureAdClientId -ne '')     { $bicepParams += " azureAdClientId=$AzureAdClientId" }
-    if ($AzureAdTenantId -ne '')     { $bicepParams += " azureAdTenantId=$AzureAdTenantId" }
-    if ($AzureAdClientSecret -ne '') { $bicepParams += " azureAdClientSecret=$AzureAdClientSecret" }
-    if ($AzureAllowedDomains -ne '') { $bicepParams += " azureAllowedDomains=$AzureAllowedDomains" }
-    if ($AzureAllowedEmails -ne '')  { $bicepParams += " azureAllowedEmails=$AzureAllowedEmails" }
+    $bicepParams = @(
+        "appName=$AppName",
+        "location=$Location",
+        "appServicePlanId=$AppServicePlanId"
+    )
+    if ($AzureAdClientId -ne '')     { $bicepParams += "azureAdClientId=$AzureAdClientId" }
+    if ($AzureAdTenantId -ne '')     { $bicepParams += "azureAdTenantId=$AzureAdTenantId" }
+    if ($AzureAdClientSecret -ne '') { $bicepParams += "azureAdClientSecret=$AzureAdClientSecret" }
+    if ($AzureAllowedDomains -ne '') { $bicepParams += "azureAllowedDomains=$AzureAllowedDomains" }
+    if ($AzureAllowedEmails -ne '')  { $bicepParams += "azureAllowedEmails=$AzureAllowedEmails" }
 
     if ($PSCmdlet.ShouldProcess("$ResourceGroupName", "az deployment group create")) {
-        $deployOutput = az deployment group create `
+        $deployJson = $null
+        $deployErr  = $null
+        $deployJson = az deployment group create `
             --resource-group $ResourceGroupName `
             --template-file $BicepFile `
-            --parameters $bicepParams `
+            --parameters @bicepParams `
             --query 'properties.outputs' `
-            -o json 2>&1
+            -o json 2>$null
 
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Bicep deployment failed:`n$deployOutput"
+            # Re-run to capture the error message for display
+            $deployErr = az deployment group create `
+                --resource-group $ResourceGroupName `
+                --template-file $BicepFile `
+                --parameters @bicepParams `
+                -o json 2>&1
+            Write-Error "Bicep deployment failed:`n$deployErr"
             exit 1
         }
 
-        $outputs = $deployOutput | ConvertFrom-Json
+        $outputs = $deployJson | ConvertFrom-Json
         $AppServiceUrl = $outputs.appServiceUrl.value
         $KvNameOut     = $outputs.keyVaultName.value
 
@@ -242,8 +254,11 @@ if ($SkipDeploy) {
                 Copy-Item -LiteralPath $file.FullName -Destination $dest
             }
 
-            Compress-Archive -Path "$StageDir${[System.IO.Path]::DirectorySeparatorChar}*" -DestinationPath $TempZip -Force
-            Write-Host "  Zip: $TempZip ($([math]::Round((Get-Item $TempZip).Length / 1MB, 1)) MB)" -ForegroundColor Gray
+            $itemsToZip = Get-ChildItem -Path $StageDir
+            Compress-Archive -Path $itemsToZip.FullName -DestinationPath $TempZip -Force
+            $zipSize = (Get-Item $TempZip).Length
+            $sizeLabel = if ($zipSize -ge 1MB) { "$([math]::Round($zipSize / 1MB, 1)) MB" } else { "$([math]::Round($zipSize / 1KB, 0)) KB" }
+            Write-Host "  Zip: $TempZip ($sizeLabel)" -ForegroundColor Gray
         } finally {
             Remove-Item -Recurse -Force $StageDir -ErrorAction SilentlyContinue
         }
