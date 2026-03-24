@@ -1,5 +1,4 @@
 # Streamlit
-.streamlit/config.toml
 
 # Python
 __pycache__/
@@ -37,3 +36,6 @@ tokens/
 *.csv
 *.xlsx
 data/
+
+# Sisyphus
+.sisyphus/

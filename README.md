@@ -113,22 +113,71 @@ The dashboard is **modularized** for easy customization. See [docs/CUSTOMIZATION
 
 ## 📦 Deployment Options
 
-### Local
+### Local Development
 ```bash
 streamlit run streamlit_dashboard.py
 ```
 
-### Streamlit Cloud (Free)
-1. Push to GitHub
-2. Go to https://share.streamlit.io
-3. Connect repo
-4. Add secrets in dashboard settings
+### Azure Deployment (from your machine)
 
-### Docker
-```bash
-docker build -t ae-dashboard .
-docker run -p 8501:8501 ae-dashboard
+Deploy to Azure App Service using the CLI. Requires Azure CLI and PowerShell 7+.
+
+**Prerequisites:**
+```powershell
+az login                     # Sign into Azure
+az bicep install             # Install Bicep CLI (if not already)
 ```
+
+**1. Create the resource group** (skip if already exists):
+```powershell
+az group create --name "doldata-rg" --location "eastus"
+```
+
+**2. Register an Azure AD app** (for user authentication):
+- Azure Portal > Microsoft Entra ID > App registrations > New registration
+- Name: `AE Dashboard`, Single tenant, Redirect URI: `https://netchex-ae-dashboard.azurewebsites.net`
+- Copy the **Client ID** and **Tenant ID** from the Overview page
+- Create a **Client secret** under Certificates & secrets
+- See [docs/AZURE_DEPLOYMENT_GUIDE.md](docs/AZURE_DEPLOYMENT_GUIDE.md) for detailed steps
+
+**3. Restrict access to specific users:**
+- Azure Portal > Microsoft Entra ID > Enterprise applications > find `AE Dashboard`
+- Properties > set **Assignment required?** = **Yes** > Save
+- Users and groups > Add the specific users who should have access
+
+**4. Deploy:**
+```powershell
+.\scripts\deploy.ps1 `
+    -ResourceGroupName "doldata-rg" `
+    -AppName "netchex-ae-dashboard" `
+    -AppServicePlanId "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/serverfarms/<plan>" `
+    -AzureAdClientId "your-client-id" `
+    -AzureAdTenantId "your-tenant-id" `
+    -AzureAdClientSecret "your-client-secret" `
+    -AzureAllowedEmails "user1@company.com,user2@company.com"
+```
+
+This provisions infrastructure (Bicep), zip-deploys the application code, and configures the App Service. The app shares an App Service Plan with the DOL app (passed via `-AppServicePlanId`).
+
+**5. Configure Salesforce credentials:**
+```powershell
+.\scripts\deploy.ps1 `
+    -ResourceGroupName "doldata-rg" `
+    -AppName "netchex-ae-dashboard" `
+    -SkipInfra -SkipDeploy -ConfigureSettings
+```
+
+**6. Verify:** Visit `https://netchex-ae-dashboard.azurewebsites.net` — you should see the Microsoft login page.
+
+For code-only redeployments (infra already exists):
+```powershell
+.\scripts\deploy.ps1 `
+    -ResourceGroupName "doldata-rg" `
+    -AppName "netchex-ae-dashboard" `
+    -SkipInfra
+```
+
+See [docs/AZURE_DEPLOYMENT_GUIDE.md](docs/AZURE_DEPLOYMENT_GUIDE.md) for the full guide including troubleshooting, parameter reference, and CI/CD pipeline setup.
 
 ## 🔒 Security Notes
 

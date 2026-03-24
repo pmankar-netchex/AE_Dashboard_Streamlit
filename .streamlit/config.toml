@@ -1,0 +1,24 @@
+# Production Streamlit configuration for Azure App Service deployment
+# These settings are required when running behind Azure's reverse proxy
+
+[server]
+# Run without browser (required for server deployment)
+headless = true
+
+# Bind to all interfaces (required for Azure App Service)
+address = "0.0.0.0"
+
+# Port for local dev (startup.sh overrides to 8000 on Azure)
+port = 8501
+
+# Disable CORS — we're behind Azure App Service's trusted reverse proxy
+# Without this, WebSocket connections may be blocked
+enableCORS = false
+
+# Disable XSRF protection — handled by Azure's infrastructure
+# Without this, POST requests through the proxy may fail
+enableXsrfProtection = false
+
+[browser]
+# Don't collect usage stats
+gatherUsageStats = false

@@ -52,8 +52,8 @@ Create a new directory and virtual environment:
 
 ```bash
 # Create project directory
-mkdir ae-dashboard-streamlit
-cd ae-dashboard-streamlit
+mkdir netchex-ae-dashboard-streamlit
+cd netchex-ae-dashboard-streamlit
 
 # Create virtual environment (recommended)
 python -m venv venv
@@ -308,8 +308,8 @@ CMD ["streamlit", "run", "streamlit_dashboard.py", "--server.port=8501", "--serv
 
 Build and run:
 ```bash
-docker build -t ae-dashboard .
-docker run -p 8501:8501 ae-dashboard
+docker build -t netchex-ae-dashboard .
+docker run -p 8501:8501 netchex-ae-dashboard
 ```
 
 ## Troubleshooting

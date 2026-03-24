@@ -35,10 +35,7 @@ def get_msal_config() -> Dict[str, Any]:
     if not all([client_id, tenant_id, client_secret]):
         return {}
     
-    authority = os.environ.get(
-        "AZURE_AUTHORITY",
-        f"https://login.microsoftonline.com/{tenant_id}"
-    )
+    authority = os.environ.get("AZURE_AUTHORITY") or f"https://login.microsoftonline.com/{tenant_id}"
     
     scopes = os.environ.get("AZURE_SCOPES", "User.Read").split()
     
@@ -242,7 +239,7 @@ def render_login_screen():
         <div class="oauth-login-box">
             <h2>🔐 Sign In Required</h2>
             <p>Please sign in with your Microsoft account to access the dashboard</p>
-            <a href="#" onclick="window.location.href='{auth_url}'" class="oauth-btn">Sign in with Microsoft</a>
+            <a href="{auth_url}" class="oauth-btn">Sign in with Microsoft</a>
         </div>
     """.format(auth_url=get_authorization_url()), unsafe_allow_html=True)
     
