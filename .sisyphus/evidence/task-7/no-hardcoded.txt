@@ -1,1 +1,0 @@
-PASS: no hardcoded azure URLs in pipeline values

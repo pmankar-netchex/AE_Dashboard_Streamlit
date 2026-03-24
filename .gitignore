@@ -36,3 +36,6 @@ tokens/
 *.csv
 *.xlsx
 data/
+
+# Sisyphus
+.sisyphus/

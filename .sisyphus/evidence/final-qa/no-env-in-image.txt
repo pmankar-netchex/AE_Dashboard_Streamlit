@@ -1,7 +1,0 @@
-=== Scenario 3: .env NOT in Docker image ===
-Command: docker run --rm --entrypoint="" ae-dashboard ls -la /app/.env
-
-Output: ls: cannot access '/app/.env': No such file or directory
-Exit code: 2
-
-RESULT: PASS — .env is not present in the Docker image
