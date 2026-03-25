@@ -179,24 +179,64 @@ Or pass ACR and Container App names explicitly:
 
 You need permission to **push to ACR** and **update** the Container App (e.g. Contributor on the RG). The script tags the image with the short git SHA (or a timestamp) and updates `:latest`.
 
+**Apple Silicon / ARM laptops:** Container Apps need **linux/amd64** images. The script uses `docker build --platform linux/amd64` by default. If cross-build is slow or flaky, build in Azure instead (no local Docker build):
+
+```bash
+./scripts/deploy_containerapp_local.sh --resource-group doldata-rg --from-deployment YOUR_NAME --acr-build
+```
+
 **Environment variables / secrets for Salesforce**
 
 Never commit real secrets. For local Docker, use `-e` or an env file (`.dockerignore` excludes `.env`). For Container Apps:
 
 - **Portal**: Container App → **Settings** → **Environment variables** and **Secrets**
-- **CLI** (example):
+- **CLI** — same fields as `.env.example` / `scripts/.env.example` (replace placeholders; **omit** optional `--set-env-vars` pairs you do not use):
+
+**OAuth (recommended)** — set `SALESFORCE_REDIRECT_URI` to your Container App HTTPS URL (must match the Connected App callback exactly):
+
+```bash
+APP_NAME=YOUR_CONTAINER_APP_NAME
+RG=YOUR_RESOURCE_GROUP
+
+az containerapp secret set \
+  --name "$APP_NAME" \
+  --resource-group "$RG" \
+  --secrets "salesforce-client-secret=PASTE_CONSUMER_SECRET_HERE"
+
+az containerapp update \
+  --name "$APP_NAME" \
+  --resource-group "$RG" \
+  --set-env-vars \
+    "SALESFORCE_CLIENT_ID=PASTE_CONSUMER_KEY_HERE" \
+    "SALESFORCE_CLIENT_SECRET=secretref:salesforce-client-secret" \
+    "SALESFORCE_REDIRECT_URI=https://YOUR_CONTAINER_APP_FQDN/" \
+    "SALESFORCE_SANDBOX=false" \
+    "SALESFORCE_LOGIN_URL=https://your-org.my.salesforce.com" \
+    "SALESFORCE_OAUTH_SCOPES=api refresh_token offline_access"
+```
+
+Remove the `SALESFORCE_LOGIN_URL` line if you use default login hosts; remove `SALESFORCE_OAUTH_SCOPES` to use the app’s built-in default (`api refresh_token offline_access`).
+
+**Username / password (legacy)** — add secrets, then extend env vars (only if you use this mode):
 
 ```bash
 az containerapp secret set \
-  --name YOUR_CONTAINER_APP_NAME \
-  --resource-group YOUR_RG \
-  --secrets "salesforce-client-secret=REPLACE_WITH_VALUE"
+  --name "$APP_NAME" \
+  --resource-group "$RG" \
+  --secrets \
+    "salesforce-password=PASTE_PASSWORD" \
+    "salesforce-security-token=PASTE_SECURITY_TOKEN"
 
 az containerapp update \
-  --name YOUR_CONTAINER_APP_NAME \
-  --resource-group YOUR_RG \
-  --set-env-vars "SALESFORCE_CLIENT_SECRET=secretref:salesforce-client-secret"
+  --name "$APP_NAME" \
+  --resource-group "$RG" \
+  --set-env-vars \
+    "SALESFORCE_USERNAME=your_email@company.com" \
+    "SALESFORCE_PASSWORD=secretref:salesforce-password" \
+    "SALESFORCE_SECURITY_TOKEN=secretref:salesforce-security-token"
 ```
+
+**Optional:** append `"DEBUG=1"` to a `--set-env-vars` list to match `scripts/.env.example` debug mode.
 
 Expected variables (see `.env.example` and `scripts/.env.example`):
 
@@ -208,6 +248,10 @@ Expected variables (see `.env.example` and `scripts/.env.example`):
 | `SALESFORCE_SANDBOX` | `true` / `false` |
 | `SALESFORCE_LOGIN_URL` | Optional |
 | `SALESFORCE_OAUTH_SCOPES` | Optional |
+| `SALESFORCE_USERNAME` | Legacy login only |
+| `SALESFORCE_PASSWORD` | Legacy; use a secret reference in Azure |
+| `SALESFORCE_SECURITY_TOKEN` | Legacy; use a secret reference in Azure |
+| `DEBUG` | Optional; `1` to show extra filter debug in the app |
 
 Keep Salesforce credentials in Container Apps (or Key Vault), not in git.
 
@@ -227,6 +271,12 @@ Keep Salesforce credentials in Container Apps (or Key Vault), not in git.
 - Loads 50 AEs in ~2-3 seconds
 
 ## 🆘 Troubleshooting
+
+### Container App: `no child with platform linux/amd64` (invalid image)
+
+The image in ACR was built for **ARM64** (e.g. Mac M-series) only. Rebuild for **amd64** and redeploy:
+
+- Run the latest `./scripts/deploy_containerapp_local.sh` (it defaults to `--platform linux/amd64`), or use **`--acr-build`** so ACR builds the image in Azure.
 
 ### Can't connect to Salesforce
 - **OAuth**: Ensure Callback URL in Connected App matches `SALESFORCE_REDIRECT_URI` exactly
