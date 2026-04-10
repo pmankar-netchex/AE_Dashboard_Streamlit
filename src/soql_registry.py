@@ -575,6 +575,139 @@ WHERE RecordType.Name = 'Partner Event'
 )
 
 # ============================================================
+# SECTION 6 — Pipeline Generated  [S6-COL-AE through S6-COL-AL]
+# ============================================================
+# Breaks down pipeline creation by source: Self-Gen, SDR, Channel Partner, Marketing.
+# Self-Gen and SDR queries use {ae_user_id} directly (per-AE, not batchable).
+# CP queries use {owner_clause} + LeadSource (batchable). Marketing is BLOCKED.
+
+S6_COL_AE = SOQLEntry(
+    col_id="S6-COL-AE",
+    display_name="Self-Gen Opps",
+    section="Pipeline Generated",
+    description="Opportunities created by the AE themselves (CreatedById = OwnerId).",
+    aggregation="COUNT(Id)",
+    time_filter=True,
+    template="""
+SELECT COUNT(Id) total
+FROM Opportunity
+WHERE OwnerId = '{ae_user_id}'
+  AND CreatedById = '{ae_user_id}'
+  AND CreatedDate >= {time_start}
+  AND CreatedDate <= {time_end}
+""",
+)
+
+S6_COL_AF = SOQLEntry(
+    col_id="S6-COL-AF",
+    display_name="Self-Gen Pipeline $",
+    section="Pipeline Generated",
+    description="Pipeline dollars from opportunities the AE created themselves.",
+    aggregation="SUM(Amount)",
+    time_filter=True,
+    template="""
+SELECT SUM(Amount) total
+FROM Opportunity
+WHERE OwnerId = '{ae_user_id}'
+  AND CreatedById = '{ae_user_id}'
+  AND CreatedDate >= {time_start}
+  AND CreatedDate <= {time_end}
+""",
+)
+
+S6_COL_AG = SOQLEntry(
+    col_id="S6-COL-AG",
+    display_name="SDR Opps",
+    section="Pipeline Generated",
+    description="Opportunities created by the AE's assigned SDR.",
+    aggregation="COUNT(Id)",
+    time_filter=True,
+    template="""
+SELECT COUNT(Id) total
+FROM Opportunity
+WHERE OwnerId = '{ae_user_id}'
+  AND CreatedById IN (SELECT Assigned_SDR_Outbound__c FROM User
+                      WHERE Id = '{ae_user_id}' AND Assigned_SDR_Outbound__c != null)
+  AND CreatedDate >= {time_start}
+  AND CreatedDate <= {time_end}
+""",
+)
+
+S6_COL_AH = SOQLEntry(
+    col_id="S6-COL-AH",
+    display_name="SDR Pipeline $",
+    section="Pipeline Generated",
+    description="Pipeline dollars from opportunities created by the AE's assigned SDR.",
+    aggregation="SUM(Amount)",
+    time_filter=True,
+    template="""
+SELECT SUM(Amount) total
+FROM Opportunity
+WHERE OwnerId = '{ae_user_id}'
+  AND CreatedById IN (SELECT Assigned_SDR_Outbound__c FROM User
+                      WHERE Id = '{ae_user_id}' AND Assigned_SDR_Outbound__c != null)
+  AND CreatedDate >= {time_start}
+  AND CreatedDate <= {time_end}
+""",
+)
+
+S6_COL_AI = SOQLEntry(
+    col_id="S6-COL-AI",
+    display_name="CP Opps",
+    section="Pipeline Generated",
+    description="Channel partner-sourced opportunities. Edit SOQL to match your org's LeadSource values.",
+    aggregation="COUNT(Id)",
+    time_filter=True,
+    template="""
+SELECT COUNT(Id) total
+FROM Opportunity
+WHERE {owner_clause}
+  AND LeadSource LIKE '%Partner%'
+  AND CreatedDate >= {time_start}
+  AND CreatedDate <= {time_end}
+""",
+)
+
+S6_COL_AJ = SOQLEntry(
+    col_id="S6-COL-AJ",
+    display_name="CP Pipeline $",
+    section="Pipeline Generated",
+    description="Pipeline dollars from channel partner-sourced opportunities. Edit SOQL to match your org's LeadSource values.",
+    aggregation="SUM(Amount)",
+    time_filter=True,
+    template="""
+SELECT SUM(Amount) total
+FROM Opportunity
+WHERE {owner_clause}
+  AND LeadSource LIKE '%Partner%'
+  AND CreatedDate >= {time_start}
+  AND CreatedDate <= {time_end}
+""",
+)
+
+S6_COL_AK = SOQLEntry(
+    col_id="S6-COL-AK",
+    display_name="Marketing Opps",
+    section="Pipeline Generated",
+    description="BLOCKED: Source__c / LeadSource field values pending confirmation.",
+    aggregation="COUNT (TBD)",
+    time_filter=True,
+    blocked=True,
+    template="",
+)
+
+S6_COL_AL = SOQLEntry(
+    col_id="S6-COL-AL",
+    display_name="Marketing Pipeline $",
+    section="Pipeline Generated",
+    description="BLOCKED: Source__c / LeadSource field values pending confirmation.",
+    aggregation="SUM (TBD)",
+    time_filter=True,
+    blocked=True,
+    template="",
+)
+
+# ============================================================
 # SECTION 5 — Marketing  [S5-COL-AB through S5-COL-AD]
 # ============================================================
 # NOTE: ALL three are BLOCKED pending Source__c / LeadSource field value confirmation.
@@ -619,6 +752,8 @@ S5_COL_AD = SOQLEntry(
 ALL_COLUMNS: list[SOQLEntry] = [
     S1_COL_C, S1_COL_D, S1_COL_E, S1_COL_F, S1_COL_G, S1_COL_H,
     S1_COL_I, S1_COL_J, S1_COL_K, S1_COL_L, S1_COL_M, S1_COL_N,
+    S6_COL_AE, S6_COL_AF, S6_COL_AG, S6_COL_AH,
+    S6_COL_AI, S6_COL_AJ, S6_COL_AK, S6_COL_AL,
     S2_COL_O, S2_COL_P, S2_COL_Q, S2_COL_R, S2_COL_S,
     S3_COL_T, S3_COL_U, S3_COL_V, S3_COL_W,
     S4_COL_X, S4_COL_Y, S4_COL_Z, S4_COL_AA,
@@ -629,6 +764,7 @@ COLUMN_BY_ID: dict[str, SOQLEntry] = {c.col_id: c for c in ALL_COLUMNS}
 
 SECTIONS: list[str] = [
     "Pipeline & Quota",
+    "Pipeline Generated",
     "Self-Gen Pipeline Creation",
     "SDR Activity",
     "Channel Partners",

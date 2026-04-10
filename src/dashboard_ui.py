@@ -12,7 +12,8 @@ from src.soql_registry import ALL_COLUMNS, SECTIONS, COLUMN_BY_ID
 
 
 SECTION_DISPLAY_NAMES = {
-    "Pipeline & Quota": "Pipeline Generated",
+    "Pipeline & Quota": "Pipeline & Quota",
+    "Pipeline Generated": "Pipeline Generated (by Source)",
     "Self-Gen Pipeline Creation": "Self Gen Pipeline Creation (not channel partners – prospects)",
     "SDR Activity": "SDR Activity for This Rep",
     "Channel Partners": "Channel Partners",
@@ -22,6 +23,7 @@ SECTION_DISPLAY_NAMES = {
 CURRENCY_COLS = {
     "S1-COL-C", "S1-COL-D", "S1-COL-F", "S1-COL-G",
     "S1-COL-I", "S1-COL-J", "S1-COL-L", "S1-COL-M", "S1-COL-N",
+    "S6-COL-AF", "S6-COL-AH", "S6-COL-AJ",
 }
 PERCENT_COLS = {"S1-COL-E", "S1-COL-H"}
 LOWER_IS_BETTER = {"S1-COL-N"}
@@ -52,6 +54,14 @@ TOOLTIPS: dict[str, str] = {
     "S4-COL-Y": "CP Unique Calls: COUNT_DISTINCT(Task.WhoId) calls to channel partners. Same exclusions as emails.",
     "S4-COL-Z": "CP Mtgs Scheduled: COUNT(Event.Id) channel partner meetings with status='Scheduled'.",
     "S4-COL-AA": "CP Mtgs Held: COUNT(Event.Id) channel partner meetings with status LIKE 'Attended%'.",
+    "S6-COL-AE": "Self-Gen Opps: COUNT(Id) where AE created the opportunity themselves (CreatedById = OwnerId).",
+    "S6-COL-AF": "Self-Gen Pipeline $: SUM(Amount) where AE created the opportunity themselves.",
+    "S6-COL-AG": "SDR Opps: COUNT(Id) where the AE's assigned SDR created the opportunity.",
+    "S6-COL-AH": "SDR Pipeline $: SUM(Amount) where the AE's assigned SDR created the opportunity.",
+    "S6-COL-AI": "CP Opps: COUNT(Id) where LeadSource indicates channel partner. Edit SOQL to match your org.",
+    "S6-COL-AJ": "CP Pipeline $: SUM(Amount) where LeadSource indicates channel partner. Edit SOQL to match your org.",
+    "S6-COL-AK": "Marketing Opps: BLOCKED — Source__c / LeadSource field values pending confirmation.",
+    "S6-COL-AL": "Marketing Pipeline $: BLOCKED — Source__c / LeadSource field values pending confirmation.",
     "S5-COL-AB": "Mtgs from Events: BLOCKED — Source__c field values pending confirmation.",
     "S5-COL-AC": "Mtgs from Inbound: BLOCKED — Source__c field values pending confirmation.",
     "S5-COL-AD": "Mtgs from Other Marketing: BLOCKED — Source__c field values pending confirmation.",
@@ -115,19 +125,38 @@ def display_kpi_widgets(df: pd.DataFrame):
     if df.empty:
         return
     st.markdown("### Key Performance Indicators")
-    cols = st.columns(5)
-    kpis = [
-        ("Bookings YTD", "S1-COL-D", fmt_currency, False),
+
+    # Row 1 — Quota & Attainment
+    row1 = st.columns(6)
+    kpi_row1 = [
         ("Quota YTD", "S1-COL-C", fmt_currency, False),
+        ("Bookings YTD", "S1-COL-D", fmt_currency, False),
+        ("YTD Attainment (avg)", "S1-COL-E", fmt_percent, True),
+        ("Quota This Mo", "S1-COL-F", fmt_currency, False),
+        ("Bookings This Mo", "S1-COL-G", fmt_currency, False),
         ("MTD Attainment (avg)", "S1-COL-H", fmt_percent, True),
-        ("Open Pipeline (This Mo)", "S1-COL-I", fmt_currency, False),
-        ("Closed Won (Period)", "S1-COL-M", fmt_currency, False),
     ]
-    for i, (label, col_id, formatter, is_avg) in enumerate(kpis):
+    for i, (label, col_id, formatter, is_avg) in enumerate(kpi_row1):
         if col_id in df.columns:
             numeric = pd.to_numeric(df[col_id], errors="coerce")
             val = numeric.mean() if is_avg else numeric.sum()
-            cols[i].metric(label, formatter(val))
+            row1[i].metric(label, formatter(val))
+
+    # Row 2 — Pipeline & Outcomes
+    row2 = st.columns(6)
+    kpi_row2 = [
+        ("Opps Created", "S1-COL-K", fmt_number, False),
+        ("Pipeline $ Created", "S1-COL-L", fmt_currency, False),
+        ("Open Pipeline (This Mo)", "S1-COL-I", fmt_currency, False),
+        ("Open Pipeline (Next Mo)", "S1-COL-J", fmt_currency, False),
+        ("Closed Won (Period)", "S1-COL-M", fmt_currency, False),
+        ("Closed Lost (Period)", "S1-COL-N", fmt_currency, False),
+    ]
+    for i, (label, col_id, formatter, is_avg) in enumerate(kpi_row2):
+        if col_id in df.columns:
+            numeric = pd.to_numeric(df[col_id], errors="coerce")
+            val = numeric.mean() if is_avg else numeric.sum()
+            row2[i].metric(label, formatter(val))
 
 
 def display_dashboard_table(df: pd.DataFrame):
