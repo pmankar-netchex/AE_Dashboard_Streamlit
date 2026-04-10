@@ -29,6 +29,13 @@ from src.data_engine import (
     clear_query_failures,
 )
 from src.soql_registry import ALL_COLUMNS, COLUMN_BY_ID, build_query, resolve_owner_clauses
+from src.soql_store import load_overrides, save_override
+from src.token_store import (
+    create_session,
+    load_session,
+    update_session,
+    delete_session,
+)
 from src.dashboard_ui import (
     apply_custom_css,
     display_kpi_widgets,
@@ -72,13 +79,26 @@ def get_salesforce_connection():
                     st.session_state["sf_oauth"]["instance_url"] = tokens.get(
                         "instance_url", oauth["instance_url"]
                     )
+                    sid = st.session_state.get("session_id")
+                    if sid:
+                        update_session(sid, st.session_state["sf_oauth"])
                     return create_salesforce_client(
                         st.session_state["sf_oauth"]["instance_url"], tokens["access_token"]
                     )
                 except Exception:
                     del st.session_state["sf_oauth"]
+                    sid = st.session_state.pop("session_id", None)
+                    if sid:
+                        delete_session(sid)
+                    if "s" in st.query_params:
+                        del st.query_params["s"]
             else:
                 del st.session_state["sf_oauth"]
+                sid = st.session_state.pop("session_id", None)
+                if sid:
+                    delete_session(sid)
+                if "s" in st.query_params:
+                    del st.query_params["s"]
 
     username = os.environ.get("SALESFORCE_USERNAME")
     password = os.environ.get("SALESFORCE_PASSWORD")
@@ -119,6 +139,9 @@ def handle_oauth_callback() -> bool:
 
     if st.session_state.get("last_oauth_code") == code:
         st.query_params.clear()
+        sid = st.session_state.get("session_id")
+        if sid:
+            st.query_params["s"] = sid
         return "sf_oauth" in st.session_state
 
     try:
@@ -130,7 +153,10 @@ def handle_oauth_callback() -> bool:
         }
         st.session_state["sf_oauth"] = oauth_data
         st.session_state["last_oauth_code"] = code
+        session_id = create_session(oauth_data)
+        st.session_state["session_id"] = session_id
         st.query_params.clear()
+        st.query_params["s"] = session_id
         return True
     except Exception as e:
         err = str(e).lower()
@@ -140,6 +166,30 @@ def handle_oauth_callback() -> bool:
         st.error(f"Login failed: {e}")
         st.query_params.clear()
         return False
+
+
+def _restore_session_if_needed():
+    """Restore auth from server-side token store using session ID in URL."""
+    session_id = st.query_params.get("s")
+    if not session_id or "sf_oauth" in st.session_state:
+        return
+    stored = load_session(session_id)
+    if stored and stored.get("refresh_token"):
+        try:
+            tokens = refresh_access_token(stored["refresh_token"])
+            oauth_data = {
+                "access_token": tokens["access_token"],
+                "refresh_token": stored["refresh_token"],
+                "instance_url": tokens.get("instance_url", stored["instance_url"]),
+            }
+            st.session_state["sf_oauth"] = oauth_data
+            st.session_state["session_id"] = session_id
+            update_session(session_id, oauth_data)
+            return
+        except Exception:
+            pass
+    delete_session(session_id)
+    del st.query_params["s"]
 
 
 # ── Sidebar Filters ────────────────────────────────────────────────────────────
@@ -234,7 +284,7 @@ def render_soql_tab(sf):
     )
 
     if "soql_overrides" not in st.session_state:
-        st.session_state["soql_overrides"] = {}
+        st.session_state["soql_overrides"] = load_overrides()
 
     # --- Test AE selector (replaces DUMMY_ID) ---
     if "soql_test_ae_list" not in st.session_state:
@@ -369,6 +419,7 @@ def render_soql_tab(sf):
                     disabled=(tested != new_soql),
                 ):
                     st.session_state["soql_overrides"][entry.col_id] = new_soql
+                    save_override(entry.col_id, new_soql)
                     st.success("Saved.")
 
     st.divider()
@@ -403,20 +454,31 @@ def render_connection_tab(sf):
         st.write("**Authenticated User:** Unable to retrieve")
 
     if st.button("Disconnect Salesforce"):
+        sid = st.session_state.pop("session_id", None)
+        if sid:
+            delete_session(sid)
         _clear_legacy_saved_salesforce_tokens()
         if "sf_oauth" in st.session_state:
             del st.session_state["sf_oauth"]
+        st.query_params.clear()
         st.rerun()
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
+    # Load persistent SOQL overrides on fresh session
+    if "soql_overrides" not in st.session_state:
+        st.session_state["soql_overrides"] = load_overrides()
+
     # Salesforce OAuth callback
     if st.query_params.get("code") and st.query_params.get("state"):
         if handle_oauth_callback():
             st.rerun()
         return
+
+    # Restore auth from server-side session (survives browser refresh)
+    _restore_session_if_needed()
 
     sf = get_salesforce_connection()
 

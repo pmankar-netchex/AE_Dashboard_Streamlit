@@ -112,6 +112,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         // Sample image listens on 80; local deploy script sets target port 8501 after the real image is deployed.
         targetPort: 80
         transport: 'auto'
+        stickySessions: {
+          affinity: 'sticky'
+        }
       }
       registries: [
         {
