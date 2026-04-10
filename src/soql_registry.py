@@ -584,7 +584,7 @@ WHERE RecordType.Name = 'Partner Event'
 S6_COL_AE = SOQLEntry(
     col_id="S6-COL-AE",
     display_name="Self-Gen Opps",
-    section="Pipeline Generated",
+    section="Self-Gen Pipeline Creation",
     description="Opportunities created by the AE themselves (CreatedById = OwnerId).",
     aggregation="COUNT(Id)",
     time_filter=True,
@@ -601,7 +601,7 @@ WHERE OwnerId = '{ae_user_id}'
 S6_COL_AF = SOQLEntry(
     col_id="S6-COL-AF",
     display_name="Self-Gen Pipeline $",
-    section="Pipeline Generated",
+    section="Self-Gen Pipeline Creation",
     description="Pipeline dollars from opportunities the AE created themselves.",
     aggregation="SUM(Amount)",
     time_filter=True,
@@ -618,7 +618,7 @@ WHERE OwnerId = '{ae_user_id}'
 S6_COL_AG = SOQLEntry(
     col_id="S6-COL-AG",
     display_name="SDR Opps",
-    section="Pipeline Generated",
+    section="SDR Activity",
     description="Opportunities created by the AE's assigned SDR.",
     aggregation="COUNT(Id)",
     time_filter=True,
@@ -636,7 +636,7 @@ WHERE OwnerId = '{ae_user_id}'
 S6_COL_AH = SOQLEntry(
     col_id="S6-COL-AH",
     display_name="SDR Pipeline $",
-    section="Pipeline Generated",
+    section="SDR Activity",
     description="Pipeline dollars from opportunities created by the AE's assigned SDR.",
     aggregation="SUM(Amount)",
     time_filter=True,
@@ -654,7 +654,7 @@ WHERE OwnerId = '{ae_user_id}'
 S6_COL_AI = SOQLEntry(
     col_id="S6-COL-AI",
     display_name="CP Opps",
-    section="Pipeline Generated",
+    section="Channel Partners",
     description="Channel partner-sourced opportunities. Edit SOQL to match your org's LeadSource values.",
     aggregation="COUNT(Id)",
     time_filter=True,
@@ -671,7 +671,7 @@ WHERE {owner_clause}
 S6_COL_AJ = SOQLEntry(
     col_id="S6-COL-AJ",
     display_name="CP Pipeline $",
-    section="Pipeline Generated",
+    section="Channel Partners",
     description="Pipeline dollars from channel partner-sourced opportunities. Edit SOQL to match your org's LeadSource values.",
     aggregation="SUM(Amount)",
     time_filter=True,
@@ -688,7 +688,7 @@ WHERE {owner_clause}
 S6_COL_AK = SOQLEntry(
     col_id="S6-COL-AK",
     display_name="Marketing Opps",
-    section="Pipeline Generated",
+    section="Marketing",
     description="BLOCKED: Source__c / LeadSource field values pending confirmation.",
     aggregation="COUNT (TBD)",
     time_filter=True,
@@ -699,7 +699,7 @@ S6_COL_AK = SOQLEntry(
 S6_COL_AL = SOQLEntry(
     col_id="S6-COL-AL",
     display_name="Marketing Pipeline $",
-    section="Pipeline Generated",
+    section="Marketing",
     description="BLOCKED: Source__c / LeadSource field values pending confirmation.",
     aggregation="SUM (TBD)",
     time_filter=True,
@@ -750,21 +750,23 @@ S5_COL_AD = SOQLEntry(
 # ============================================================
 
 ALL_COLUMNS: list[SOQLEntry] = [
+    # Section 1 — Pipeline & Quota
     S1_COL_C, S1_COL_D, S1_COL_E, S1_COL_F, S1_COL_G, S1_COL_H,
     S1_COL_I, S1_COL_J, S1_COL_K, S1_COL_L, S1_COL_M, S1_COL_N,
-    S6_COL_AE, S6_COL_AF, S6_COL_AG, S6_COL_AH,
-    S6_COL_AI, S6_COL_AJ, S6_COL_AK, S6_COL_AL,
-    S2_COL_O, S2_COL_P, S2_COL_Q, S2_COL_R, S2_COL_S,
-    S3_COL_T, S3_COL_U, S3_COL_V, S3_COL_W,
-    S4_COL_X, S4_COL_Y, S4_COL_Z, S4_COL_AA,
-    S5_COL_AB, S5_COL_AC, S5_COL_AD,
+    # Section 2 — Self-Gen: Emails, Calls, *Opps, Pipeline $*, Voicemail, Foot Canvass, Net New
+    S2_COL_O, S2_COL_P, S6_COL_AE, S6_COL_AF, S2_COL_Q, S2_COL_R, S2_COL_S,
+    # Section 3 — SDR: Emails, Calls, *Opps, Pipeline $*, Mtgs Scheduled, Mtgs Held
+    S3_COL_T, S3_COL_U, S6_COL_AG, S6_COL_AH, S3_COL_V, S3_COL_W,
+    # Section 4 — CP: Emails, Calls, *Opps, Pipeline $*, Mtgs Scheduled, Mtgs Held
+    S4_COL_X, S4_COL_Y, S6_COL_AI, S6_COL_AJ, S4_COL_Z, S4_COL_AA,
+    # Section 5 — Marketing: Events, Inbound, *Opps, Pipeline $*, Other
+    S5_COL_AB, S5_COL_AC, S6_COL_AK, S6_COL_AL, S5_COL_AD,
 ]
 
 COLUMN_BY_ID: dict[str, SOQLEntry] = {c.col_id: c for c in ALL_COLUMNS}
 
 SECTIONS: list[str] = [
     "Pipeline & Quota",
-    "Pipeline Generated",
     "Self-Gen Pipeline Creation",
     "SDR Activity",
     "Channel Partners",

@@ -13,7 +13,6 @@ from src.soql_registry import ALL_COLUMNS, SECTIONS, COLUMN_BY_ID
 
 SECTION_DISPLAY_NAMES = {
     "Pipeline & Quota": "Pipeline & Quota",
-    "Pipeline Generated": "Pipeline Generated (by Source)",
     "Self-Gen Pipeline Creation": "Self Gen Pipeline Creation (not channel partners – prospects)",
     "SDR Activity": "SDR Activity for This Rep",
     "Channel Partners": "Channel Partners",
