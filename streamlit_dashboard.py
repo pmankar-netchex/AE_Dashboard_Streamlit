@@ -364,10 +364,12 @@ def render_soql_tab(sf):
                     if not test_ae_id:
                         st.warning("Please load and select a test AE above first.")
                     else:
+                        from src.data_engine import resolve_sdr_user_id as _resolve_sdr
                         test_params = {
                             "ae_user_id": test_ae_id,
                             "ae_email": test_ae_email,
                             "manager_name": None,
+                            "sdr_user_id": _resolve_sdr(sf, test_ae_id),
                             "time_start": "2025-01-01T00:00:00Z",
                             "time_end": "2025-12-31T23:59:59Z",
                             "time_start_date": "2025-01-01",

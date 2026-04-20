@@ -106,13 +106,17 @@ def build_query(entry: SOQLEntry, params: dict) -> str:
     custom_owner = _custom_owner_clause(params)
     ae_email = _ae_email_clause(params)
     sdr_owner = _sdr_owner_clause(params)
+    # Defaults for params that only some templates reference — use a well-formed
+    # but never-matching ID so queries are syntactically valid when unresolved.
+    params_defaults = {"sdr_user_id": "000000000000000"}
+    merged = {**params_defaults, **params}
     return entry.template.format(
         owner_clause=owner,
         quota_owner_clause=quota_owner,
         custom_owner_clause=custom_owner,
         ae_email_clause=ae_email,
         sdr_owner_clause=sdr_owner,
-        **params,
+        **merged,
     )
 
 
@@ -634,12 +638,13 @@ S6_COL_AG = SOQLEntry(
     description="Opportunity splits where the AE is a split recipient and the AE's SDR created the opp (Net New).",
     aggregation="COUNT(Id)",
     time_filter=True,
+    # sdr_user_id is resolved per-AE in data_engine (User.Assigned_SDR_Outbound__c).
+    # Dot-walked LHS isn't allowed in an IN subquery on OpportunitySplit, so use direct equality.
     template="""
 SELECT COUNT(Id) total
 FROM OpportunitySplit
 WHERE SplitOwnerId = '{ae_user_id}'
-  AND Opportunity.CreatedById IN (SELECT Assigned_SDR_Outbound__c FROM User
-                      WHERE Id = '{ae_user_id}' AND Assigned_SDR_Outbound__c != null)
+  AND Opportunity.CreatedById = '{sdr_user_id}'
   AND Opportunity.Revenue_Type__c = 'Net New'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
@@ -657,8 +662,7 @@ S6_COL_AH = SOQLEntry(
 SELECT SUM(SplitAmount) total
 FROM OpportunitySplit
 WHERE SplitOwnerId = '{ae_user_id}'
-  AND Opportunity.CreatedById IN (SELECT Assigned_SDR_Outbound__c FROM User
-                      WHERE Id = '{ae_user_id}' AND Assigned_SDR_Outbound__c != null)
+  AND Opportunity.CreatedById = '{sdr_user_id}'
   AND Opportunity.Revenue_Type__c = 'Net New'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}

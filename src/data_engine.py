@@ -185,21 +185,42 @@ def _fetch_batch(sf, entry: SOQLEntry, soql: str, group_field: str,
 
 # ── AE list & dashboard builder ──────────────────────────────────────────────
 
+_NULL_ID_SENTINEL = "000000000000000"  # well-formed but never-matching SF ID
+
+
+def resolve_sdr_user_id(sf, ae_user_id: str) -> str:
+    """Return the AE's Assigned_SDR_Outbound__c User Id, or a never-matching sentinel."""
+    if not ae_user_id:
+        return _NULL_ID_SENTINEL
+    try:
+        r = sf.query(
+            f"SELECT Assigned_SDR_Outbound__c FROM User WHERE Id = '{ae_user_id}' LIMIT 1"
+        )
+        recs = r.get("records", [])
+        if recs:
+            sdr = recs[0].get("Assigned_SDR_Outbound__c")
+            if sdr:
+                return sdr
+    except Exception:
+        pass
+    return _NULL_ID_SENTINEL
+
+
 def build_ae_list(sf, params: dict) -> list[dict]:
     """
     Get the list of AEs to display based on manager/ae_user_id filter.
-    Returns list of {Id, Name, Email} dicts.
+    Returns list of {Id, Name, Email, Manager, SdrId} dicts.
     """
     if params.get("ae_user_id"):
         query = f"""
-            SELECT Id, Name, Email, Manager.Name
+            SELECT Id, Name, Email, Manager.Name, Assigned_SDR_Outbound__c
             FROM User
             WHERE Id = '{params["ae_user_id"]}'
             AND IsActive = true
         """
     elif params.get("manager_name"):
         query = f"""
-            SELECT Id, Name, Email, Manager.Name
+            SELECT Id, Name, Email, Manager.Name, Assigned_SDR_Outbound__c
             FROM User
             WHERE Manager.Name = '{params["manager_name"]}'
             AND IsActive = true
@@ -207,7 +228,7 @@ def build_ae_list(sf, params: dict) -> list[dict]:
         """
     else:
         query = """
-            SELECT Id, Name, Email, Manager.Name
+            SELECT Id, Name, Email, Manager.Name, Assigned_SDR_Outbound__c
             FROM User
             WHERE IsActive = true
             AND User_Role_Formula__c LIKE '%Sales Rep%'
@@ -224,6 +245,7 @@ def build_ae_list(sf, params: dict) -> list[dict]:
                 "Name": r["Name"],
                 "Email": r.get("Email", ""),
                 "Manager": (r.get("Manager") or {}).get("Name", ""),
+                "SdrId": r.get("Assigned_SDR_Outbound__c") or _NULL_ID_SENTINEL,
             }
             for r in result.get("records", [])
         ]
@@ -276,7 +298,12 @@ def build_dashboard_dataframe(sf, params: dict, overrides: dict | None = None) -
         # Submit per-AE queries (SDR)
         per_ae_futures = {}
         for ae in ae_list:
-            ae_params = {**params, "ae_user_id": ae["Id"], "ae_email": ae["Email"]}
+            ae_params = {
+                **params,
+                "ae_user_id": ae["Id"],
+                "ae_email": ae["Email"],
+                "sdr_user_id": ae.get("SdrId") or _NULL_ID_SENTINEL,
+            }
             for entry in per_ae_entries:
                 fut = executor.submit(fetch_column, sf, entry, ae_params, overrides)
                 per_ae_futures[fut] = (entry.col_id, ae["Id"])
