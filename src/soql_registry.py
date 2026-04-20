@@ -30,12 +30,14 @@ class SOQLEntry:
 
 
 def _owner_clause(p: dict) -> str:
-    """Build the OwnerId / Manager filter clause for Opportunity."""
+    """Build the SplitOwnerId / Manager filter clause for OpportunitySplit.
+    Opportunity-based metrics query OpportunitySplit so each AE's share is
+    captured (splits avoid double-counting when an opp is shared)."""
     if p.get("manager_name") and not p.get("ae_user_id"):
-        return f"Owner.Manager.Name = '{p['manager_name']}'"
+        return f"SplitOwner.Manager.Name = '{p['manager_name']}'"
     if p.get("ae_user_id"):
-        return f"OwnerId = '{p['ae_user_id']}'"
-    return "OwnerId != null"
+        return f"SplitOwnerId = '{p['ae_user_id']}'"
+    return "SplitOwnerId != null"
 
 
 def _quota_owner_clause(p: dict) -> str:
@@ -79,7 +81,7 @@ _CLAUSE_BUILDERS = {
 
 # Mapping of batchable clause placeholders → GROUP BY field
 BATCH_FIELD_MAP = {
-    "{owner_clause}": "OwnerId",
+    "{owner_clause}": "SplitOwnerId",
     "{quota_owner_clause}": "QuotaOwnerId",
     "{custom_owner_clause}": "Assigned_ID_Custom__c",
 }
@@ -138,16 +140,17 @@ S1_COL_D = SOQLEntry(
     col_id="S1-COL-D",
     display_name="Bookings YTD",
     section="Pipeline & Quota",
-    description="Sum of Closed Won opportunity amounts from fiscal year start to today.",
-    aggregation="SUM(Amount)",
+    description="Sum of Closed Won split amounts from fiscal year start to today (Net New, split-credited).",
+    aggregation="SUM(SplitAmount)",
     time_filter=False,
     template="""
-SELECT SUM(Amount) total
-FROM Opportunity
-WHERE StageName = 'Closed/Won'
+SELECT SUM(SplitAmount) total
+FROM OpportunitySplit
+WHERE Opportunity.StageName = 'Closed/Won'
+  AND Opportunity.Revenue_Type__c = 'Net New'
   AND {owner_clause}
-  AND CloseDate >= {fiscal_year_start}
-  AND CloseDate <= TODAY
+  AND Opportunity.CloseDate >= {fiscal_year_start}
+  AND Opportunity.CloseDate <= TODAY
 """,
 )
 
@@ -181,15 +184,16 @@ S1_COL_G = SOQLEntry(
     col_id="S1-COL-G",
     display_name="Bookings This Month",
     section="Pipeline & Quota",
-    description="Sum of Closed Won opportunity amounts for the current calendar month.",
-    aggregation="SUM(Amount)",
+    description="Sum of Closed Won split amounts for the current calendar month (Net New, split-credited).",
+    aggregation="SUM(SplitAmount)",
     time_filter=False,
     template="""
-SELECT SUM(Amount) total
-FROM Opportunity
-WHERE StageName = 'Closed/Won'
+SELECT SUM(SplitAmount) total
+FROM OpportunitySplit
+WHERE Opportunity.StageName = 'Closed/Won'
+  AND Opportunity.Revenue_Type__c = 'Net New'
   AND {owner_clause}
-  AND CloseDate = THIS_MONTH
+  AND Opportunity.CloseDate = THIS_MONTH
 """,
 )
 
@@ -208,15 +212,16 @@ S1_COL_I = SOQLEntry(
     col_id="S1-COL-I",
     display_name="Open Pipeline (This Month)",
     section="Pipeline & Quota",
-    description="Sum of open (not closed) opportunity amounts closing this month.",
-    aggregation="SUM(Amount)",
+    description="Sum of open (not closed) split amounts closing this month (Net New, split-credited).",
+    aggregation="SUM(SplitAmount)",
     time_filter=False,
     template="""
-SELECT SUM(Amount) total
-FROM Opportunity
-WHERE IsClosed = false
+SELECT SUM(SplitAmount) total
+FROM OpportunitySplit
+WHERE Opportunity.IsClosed = false
+  AND Opportunity.Revenue_Type__c = 'Net New'
   AND {owner_clause}
-  AND CloseDate = THIS_MONTH
+  AND Opportunity.CloseDate = THIS_MONTH
 """,
 )
 
@@ -224,15 +229,16 @@ S1_COL_J = SOQLEntry(
     col_id="S1-COL-J",
     display_name="Open Pipeline (Next Month)",
     section="Pipeline & Quota",
-    description="Sum of open opportunity amounts closing next month.",
-    aggregation="SUM(Amount)",
+    description="Sum of open split amounts closing next month (Net New, split-credited).",
+    aggregation="SUM(SplitAmount)",
     time_filter=False,
     template="""
-SELECT SUM(Amount) total
-FROM Opportunity
-WHERE IsClosed = false
+SELECT SUM(SplitAmount) total
+FROM OpportunitySplit
+WHERE Opportunity.IsClosed = false
+  AND Opportunity.Revenue_Type__c = 'Net New'
   AND {owner_clause}
-  AND CloseDate = NEXT_MONTH
+  AND Opportunity.CloseDate = NEXT_MONTH
 """,
 )
 
@@ -240,15 +246,16 @@ S1_COL_K = SOQLEntry(
     col_id="S1-COL-K",
     display_name="# Opportunities Created",
     section="Pipeline & Quota",
-    description="Count of opportunities created within the selected time period.",
+    description="Count of opportunity splits the AE is on, created within the selected time period (Net New).",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
 SELECT COUNT(Id) total
-FROM Opportunity
+FROM OpportunitySplit
 WHERE {owner_clause}
-  AND CreatedDate >= {time_start}
-  AND CreatedDate <= {time_end}
+  AND Opportunity.Revenue_Type__c = 'Net New'
+  AND Opportunity.CreatedDate >= {time_start}
+  AND Opportunity.CreatedDate <= {time_end}
 """,
 )
 
@@ -256,15 +263,16 @@ S1_COL_L = SOQLEntry(
     col_id="S1-COL-L",
     display_name="Pipeline $ Created",
     section="Pipeline & Quota",
-    description="Sum of opportunity amounts created within the selected time period.",
-    aggregation="SUM(Amount)",
+    description="Sum of split amounts for opportunities created within the selected time period (Net New, split-credited).",
+    aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
-SELECT SUM(Amount) total
-FROM Opportunity
+SELECT SUM(SplitAmount) total
+FROM OpportunitySplit
 WHERE {owner_clause}
-  AND CreatedDate >= {time_start}
-  AND CreatedDate <= {time_end}
+  AND Opportunity.Revenue_Type__c = 'Net New'
+  AND Opportunity.CreatedDate >= {time_start}
+  AND Opportunity.CreatedDate <= {time_end}
 """,
 )
 
@@ -272,16 +280,17 @@ S1_COL_M = SOQLEntry(
     col_id="S1-COL-M",
     display_name="Total Closed Won",
     section="Pipeline & Quota",
-    description="Sum of Closed Won opportunity amounts in the selected time period.",
-    aggregation="SUM(Amount)",
+    description="Sum of Closed Won split amounts in the selected time period (Net New, split-credited).",
+    aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
-SELECT SUM(Amount) total
-FROM Opportunity
-WHERE StageName = 'Closed/Won'
+SELECT SUM(SplitAmount) total
+FROM OpportunitySplit
+WHERE Opportunity.StageName = 'Closed/Won'
+  AND Opportunity.Revenue_Type__c = 'Net New'
   AND {owner_clause}
-  AND CloseDate >= {time_start_date}
-  AND CloseDate <= {time_end_date}
+  AND Opportunity.CloseDate >= {time_start_date}
+  AND Opportunity.CloseDate <= {time_end_date}
 """,
 )
 
@@ -289,16 +298,17 @@ S1_COL_N = SOQLEntry(
     col_id="S1-COL-N",
     display_name="Total Closed Lost",
     section="Pipeline & Quota",
-    description="Sum of Closed Lost opportunity amounts in the selected time period.",
-    aggregation="SUM(Amount)",
+    description="Sum of Closed Lost split amounts in the selected time period (Net New, split-credited).",
+    aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
-SELECT SUM(Amount) total
-FROM Opportunity
-WHERE StageName = 'Closed/Lost'
+SELECT SUM(SplitAmount) total
+FROM OpportunitySplit
+WHERE Opportunity.StageName = 'Closed/Lost'
+  AND Opportunity.Revenue_Type__c = 'Net New'
   AND {owner_clause}
-  AND CloseDate >= {time_start_date}
-  AND CloseDate <= {time_end_date}
+  AND Opportunity.CloseDate >= {time_start_date}
+  AND Opportunity.CloseDate <= {time_end_date}
 """,
 )
 
@@ -585,16 +595,17 @@ S6_COL_AE = SOQLEntry(
     col_id="S6-COL-AE",
     display_name="Self-Gen Opps",
     section="Self-Gen Pipeline Creation",
-    description="Opportunities created by the AE themselves (CreatedById = OwnerId).",
+    description="Opportunity splits where the AE is a split recipient and the AE created the opp (Net New).",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
 SELECT COUNT(Id) total
-FROM Opportunity
-WHERE OwnerId = '{ae_user_id}'
-  AND CreatedById = '{ae_user_id}'
-  AND CreatedDate >= {time_start}
-  AND CreatedDate <= {time_end}
+FROM OpportunitySplit
+WHERE SplitOwnerId = '{ae_user_id}'
+  AND Opportunity.CreatedById = '{ae_user_id}'
+  AND Opportunity.Revenue_Type__c = 'Net New'
+  AND Opportunity.CreatedDate >= {time_start}
+  AND Opportunity.CreatedDate <= {time_end}
 """,
 )
 
@@ -602,16 +613,17 @@ S6_COL_AF = SOQLEntry(
     col_id="S6-COL-AF",
     display_name="Self-Gen Pipeline $",
     section="Self-Gen Pipeline Creation",
-    description="Pipeline dollars from opportunities the AE created themselves.",
-    aggregation="SUM(Amount)",
+    description="Split dollars from opportunities the AE created themselves (Net New, split-credited).",
+    aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
-SELECT SUM(Amount) total
-FROM Opportunity
-WHERE OwnerId = '{ae_user_id}'
-  AND CreatedById = '{ae_user_id}'
-  AND CreatedDate >= {time_start}
-  AND CreatedDate <= {time_end}
+SELECT SUM(SplitAmount) total
+FROM OpportunitySplit
+WHERE SplitOwnerId = '{ae_user_id}'
+  AND Opportunity.CreatedById = '{ae_user_id}'
+  AND Opportunity.Revenue_Type__c = 'Net New'
+  AND Opportunity.CreatedDate >= {time_start}
+  AND Opportunity.CreatedDate <= {time_end}
 """,
 )
 
@@ -619,17 +631,18 @@ S6_COL_AG = SOQLEntry(
     col_id="S6-COL-AG",
     display_name="SDR Opps",
     section="SDR Activity",
-    description="Opportunities created by the AE's assigned SDR.",
+    description="Opportunity splits where the AE is a split recipient and the AE's SDR created the opp (Net New).",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
 SELECT COUNT(Id) total
-FROM Opportunity
-WHERE OwnerId = '{ae_user_id}'
-  AND CreatedById IN (SELECT Assigned_SDR_Outbound__c FROM User
+FROM OpportunitySplit
+WHERE SplitOwnerId = '{ae_user_id}'
+  AND Opportunity.CreatedById IN (SELECT Assigned_SDR_Outbound__c FROM User
                       WHERE Id = '{ae_user_id}' AND Assigned_SDR_Outbound__c != null)
-  AND CreatedDate >= {time_start}
-  AND CreatedDate <= {time_end}
+  AND Opportunity.Revenue_Type__c = 'Net New'
+  AND Opportunity.CreatedDate >= {time_start}
+  AND Opportunity.CreatedDate <= {time_end}
 """,
 )
 
@@ -637,17 +650,18 @@ S6_COL_AH = SOQLEntry(
     col_id="S6-COL-AH",
     display_name="SDR Pipeline $",
     section="SDR Activity",
-    description="Pipeline dollars from opportunities created by the AE's assigned SDR.",
-    aggregation="SUM(Amount)",
+    description="Split dollars from opportunities created by the AE's assigned SDR (Net New, split-credited).",
+    aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
-SELECT SUM(Amount) total
-FROM Opportunity
-WHERE OwnerId = '{ae_user_id}'
-  AND CreatedById IN (SELECT Assigned_SDR_Outbound__c FROM User
+SELECT SUM(SplitAmount) total
+FROM OpportunitySplit
+WHERE SplitOwnerId = '{ae_user_id}'
+  AND Opportunity.CreatedById IN (SELECT Assigned_SDR_Outbound__c FROM User
                       WHERE Id = '{ae_user_id}' AND Assigned_SDR_Outbound__c != null)
-  AND CreatedDate >= {time_start}
-  AND CreatedDate <= {time_end}
+  AND Opportunity.Revenue_Type__c = 'Net New'
+  AND Opportunity.CreatedDate >= {time_start}
+  AND Opportunity.CreatedDate <= {time_end}
 """,
 )
 
@@ -655,16 +669,17 @@ S6_COL_AI = SOQLEntry(
     col_id="S6-COL-AI",
     display_name="CP Opps",
     section="Channel Partners",
-    description="Channel partner-sourced opportunities. Edit SOQL to match your org's LeadSource values.",
+    description="Channel partner-sourced opportunity splits (Net New). Edit SOQL to match your org's LeadSource values.",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
 SELECT COUNT(Id) total
-FROM Opportunity
+FROM OpportunitySplit
 WHERE {owner_clause}
-  AND LeadSource LIKE '%Partner%'
-  AND CreatedDate >= {time_start}
-  AND CreatedDate <= {time_end}
+  AND Opportunity.LeadSource LIKE '%Partner%'
+  AND Opportunity.Revenue_Type__c = 'Net New'
+  AND Opportunity.CreatedDate >= {time_start}
+  AND Opportunity.CreatedDate <= {time_end}
 """,
 )
 
@@ -672,16 +687,17 @@ S6_COL_AJ = SOQLEntry(
     col_id="S6-COL-AJ",
     display_name="CP Pipeline $",
     section="Channel Partners",
-    description="Pipeline dollars from channel partner-sourced opportunities. Edit SOQL to match your org's LeadSource values.",
-    aggregation="SUM(Amount)",
+    description="Split dollars from channel partner-sourced opportunities (Net New, split-credited). Edit SOQL to match your org's LeadSource values.",
+    aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
-SELECT SUM(Amount) total
-FROM Opportunity
+SELECT SUM(SplitAmount) total
+FROM OpportunitySplit
 WHERE {owner_clause}
-  AND LeadSource LIKE '%Partner%'
-  AND CreatedDate >= {time_start}
-  AND CreatedDate <= {time_end}
+  AND Opportunity.LeadSource LIKE '%Partner%'
+  AND Opportunity.Revenue_Type__c = 'Net New'
+  AND Opportunity.CreatedDate >= {time_start}
+  AND Opportunity.CreatedDate <= {time_end}
 """,
 )
 
