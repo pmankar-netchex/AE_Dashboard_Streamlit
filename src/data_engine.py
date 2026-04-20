@@ -141,15 +141,19 @@ def _build_batch_soql(entry: SOQLEntry, params: dict, ae_ids: list[str],
     batch = batch.replace("SELECT ", f"SELECT {field}, ", 1)
     batch = batch.rstrip() + f"\nGROUP BY {field}"
 
-    # Format remaining placeholders (time params); owner clause dummies are unused
-    batch = batch.format(
-        owner_clause="1=1",
-        quota_owner_clause="1=1",
-        custom_owner_clause="1=1",
-        ae_email_clause="1=1",
-        sdr_owner_clause="1=1",
+    # Format remaining placeholders (time params); owner clause dummies are unused.
+    # Defaults first, then params overrides.
+    fmt_kwargs = {
+        "owner_clause": "1=1",
+        "quota_owner_clause": "1=1",
+        "custom_owner_clause": "1=1",
+        "ae_email_clause": "1=1",
+        "sdr_owner_clause": "1=1",
+        "sdr_split_owner_clause": "1=1",
+        "sdr_user_id": "000000000000000",
         **params,
-    )
+    }
+    batch = batch.format(**fmt_kwargs)
     return batch, field
 
 

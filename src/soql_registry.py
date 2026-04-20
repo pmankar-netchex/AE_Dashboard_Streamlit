@@ -60,7 +60,8 @@ def _ae_email_clause(p: dict) -> str:
 
 
 def _sdr_owner_clause(p: dict) -> str:
-    """Build OwnerId IN (subquery) from AE's Assigned_SDR_Outbound__c — SDR(s) associated with the given AE."""
+    """Build OwnerId IN (subquery) from AE's Assigned_SDR_Outbound__c — SDR(s) associated with the given AE.
+    Used on Task/Event where the queried object has a direct OwnerId field."""
     ae_id = p.get("ae_user_id", "")
     if not ae_id:
         return "OwnerId != null"
@@ -71,12 +72,23 @@ def _sdr_owner_clause(p: dict) -> str:
     )
 
 
+def _sdr_split_owner_clause(p: dict) -> str:
+    """OpportunitySplit variant of the SDR filter: the AE is a split recipient
+    AND the Opportunity was created by the AE's SDR. Needs sdr_user_id resolved
+    upstream (data_engine.resolve_sdr_user_id) because Salesforce disallows a
+    dot-walked LHS like 'Opportunity.CreatedById' inside an IN (SELECT …) semi-join."""
+    ae_id = p.get("ae_user_id") or "000000000000000"
+    sdr_id = p.get("sdr_user_id") or "000000000000000"
+    return f"SplitOwnerId = '{ae_id}' AND Opportunity.CreatedById = '{sdr_id}'"
+
+
 _CLAUSE_BUILDERS = {
     "{owner_clause}": ("Owner Clause", _owner_clause),
     "{quota_owner_clause}": ("Quota Owner Clause", _quota_owner_clause),
     "{custom_owner_clause}": ("Custom Owner Clause", _custom_owner_clause),
     "{ae_email_clause}": ("AE Email Clause", _ae_email_clause),
     "{sdr_owner_clause}": ("SDR Owner Clause", _sdr_owner_clause),
+    "{sdr_split_owner_clause}": ("SDR Split Owner Clause", _sdr_split_owner_clause),
 }
 
 # Mapping of batchable clause placeholders → GROUP BY field
@@ -106,6 +118,7 @@ def build_query(entry: SOQLEntry, params: dict) -> str:
     custom_owner = _custom_owner_clause(params)
     ae_email = _ae_email_clause(params)
     sdr_owner = _sdr_owner_clause(params)
+    sdr_split_owner = _sdr_split_owner_clause(params)
     # Defaults for params that only some templates reference — use a well-formed
     # but never-matching ID so queries are syntactically valid when unresolved.
     params_defaults = {"sdr_user_id": "000000000000000"}
@@ -116,6 +129,7 @@ def build_query(entry: SOQLEntry, params: dict) -> str:
         custom_owner_clause=custom_owner,
         ae_email_clause=ae_email,
         sdr_owner_clause=sdr_owner,
+        sdr_split_owner_clause=sdr_split_owner,
         **merged,
     )
 
@@ -638,13 +652,10 @@ S6_COL_AG = SOQLEntry(
     description="Opportunity splits where the AE is a split recipient and the AE's SDR created the opp (Net New).",
     aggregation="COUNT(Id)",
     time_filter=True,
-    # sdr_user_id is resolved per-AE in data_engine (User.Assigned_SDR_Outbound__c).
-    # Dot-walked LHS isn't allowed in an IN subquery on OpportunitySplit, so use direct equality.
     template="""
 SELECT COUNT(Id) total
 FROM OpportunitySplit
-WHERE SplitOwnerId = '{ae_user_id}'
-  AND Opportunity.CreatedById = '{sdr_user_id}'
+WHERE {sdr_split_owner_clause}
   AND Opportunity.Revenue_Type__c = 'Net New'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
@@ -661,8 +672,7 @@ S6_COL_AH = SOQLEntry(
     template="""
 SELECT SUM(SplitAmount) total
 FROM OpportunitySplit
-WHERE SplitOwnerId = '{ae_user_id}'
-  AND Opportunity.CreatedById = '{sdr_user_id}'
+WHERE {sdr_split_owner_clause}
   AND Opportunity.Revenue_Type__c = 'Net New'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
