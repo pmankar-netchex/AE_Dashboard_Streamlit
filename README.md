@@ -90,6 +90,49 @@ The dashboard is **modularized** for easy customization. See [docs/CUSTOMIZATION
 - **Quota formula**: Edit `src/dashboard_calculations.py` line 55
 - **Colors/styling**: Edit `src/dashboard_ui.py` line 13 (CSS)
 
+## 🗂 SOQL templates — Azure Table Storage + snapshot
+
+Active SOQL templates for every dashboard column live in an Azure Table Storage table (`queries` on `staedashboardens2xr`) rather than in the image. This means edits made from the in-app SOQL test tab **persist across Container App revisions** — they are not wiped by a redeploy.
+
+`src/soql_registry.py` still declares every column (id, display name, section, aggregation, default template) — treat those defaults as the seed values. On cold start, `seed_missing()` inserts any new column's default into the table; the table value is the runtime source of truth from then on.
+
+### queries_snapshot.json (git-tracked)
+
+`queries_snapshot.json` at the repo root is an audit-friendly export of the table, committed to git. It is the disaster-recovery source if the table is ever wiped.
+
+### Sync script
+
+```bash
+python scripts/sync_queries.py --export   # Table → queries_snapshot.json
+python scripts/sync_queries.py --import   # queries_snapshot.json → Table (recovery)
+python scripts/sync_queries.py --diff     # show pending differences
+python scripts/sync_queries.py --check    # exit 1 if out of sync (for CI/hooks)
+```
+
+All modes require `AZURE_STORAGE_CONNECTION_STRING` pointing at the dashboard storage account.
+
+### Pre-push guard + deploy guard
+
+- `.githooks/pre-push` runs `--check` before every push. Aborts if the table has edits the snapshot doesn't reflect.
+- `scripts/deploy_containerapp_local.sh` runs `--export` before building so a deploy never clobbers unmerged table edits. Override with `SKIP_SYNC=1` only if deliberate.
+
+### One-time setup on a new workstation
+
+```bash
+# 1. Enable the pre-push hook
+git config core.hooksPath .githooks
+
+# 2. Persist the storage connection string in your shell rc
+#    (get the value from: az storage account show-connection-string \
+#        --name staedashboardens2xr --resource-group doldata-rg -o tsv)
+echo 'export AZURE_STORAGE_CONNECTION_STRING="<paste value>"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+After this, the pre-push hook runs automatically on every `git push` and the deploy script auto-exports. If the hook aborts, run `python scripts/sync_queries.py --export && git add queries_snapshot.json` and retry the push.
+
+---
+
 ## 📦 Deployment Options
 
 ### Local

@@ -119,7 +119,14 @@ if [[ "${SKIP_SYNC:-0}" != "1" ]]; then
     exit 1
   fi
   echo "==> Exporting Table Storage queries -> queries_snapshot.json..."
-  "${PYTHON:-python3}" "$PROJECT_ROOT/scripts/sync_queries.py" --export
+  if [[ -n "${PYTHON:-}" ]]; then
+    SYNC_PY="$PYTHON"
+  elif [[ -x "$PROJECT_ROOT/venv/bin/python" ]]; then
+    SYNC_PY="$PROJECT_ROOT/venv/bin/python"
+  else
+    SYNC_PY="python3"
+  fi
+  "$SYNC_PY" "$PROJECT_ROOT/scripts/sync_queries.py" --export
 fi
 if [[ "$USE_ACR_BUILD" -eq 0 ]]; then
   command -v docker >/dev/null 2>&1 || {

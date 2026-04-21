@@ -11,8 +11,14 @@ if [[ -z "${AZURE_STORAGE_CONNECTION_STRING:-}" ]]; then
   exit 0
 fi
 
-PY="${PYTHON:-python3}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+if [[ -n "${PYTHON:-}" ]]; then
+  PY="$PYTHON"
+elif [[ -x "$REPO_ROOT/venv/bin/python" ]]; then
+  PY="$REPO_ROOT/venv/bin/python"
+else
+  PY="python3"
+fi
 
 if "$PY" "$REPO_ROOT/scripts/sync_queries.py" --check; then
   exit 0
