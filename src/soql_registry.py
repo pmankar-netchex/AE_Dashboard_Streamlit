@@ -153,7 +153,7 @@ S1_COL_C = SOQLEntry(
 SELECT SUM(QuotaAmount) total
 FROM ForecastingQuota
 WHERE {quota_owner_clause}
-  AND ForecastingType.MasterLabel = 'Revenue'
+  AND ForecastingTypeId IN (SELECT Id FROM ForecastingType WHERE MasterLabel = 'Revenue')
   AND StartDate >= {fiscal_year_start}
   AND StartDate <= TODAY
 """,
@@ -200,7 +200,7 @@ S1_COL_F = SOQLEntry(
 SELECT SUM(QuotaAmount) total
 FROM ForecastingQuota
 WHERE {quota_owner_clause}
-  AND ForecastingType.MasterLabel = 'Revenue'
+  AND ForecastingTypeId IN (SELECT Id FROM ForecastingType WHERE MasterLabel = 'Revenue')
   AND StartDate = THIS_MONTH
 """,
 )
