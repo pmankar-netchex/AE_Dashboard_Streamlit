@@ -54,6 +54,15 @@ def _custom_owner_clause(p: dict) -> str:
     return "Assigned_ID_Custom__c != null"
 
 
+def _activity_owner_clause(p: dict) -> str:
+    """Build the OwnerId filter clause for Task/Event objects (SplitOwnerId only exists on OpportunitySplit)."""
+    if p.get("manager_name") and not p.get("ae_user_id"):
+        return f"Owner.Manager.Name = '{p['manager_name']}'"
+    if p.get("ae_user_id"):
+        return f"OwnerId = '{p['ae_user_id']}'"
+    return "OwnerId != null"
+
+
 def _ae_email_clause(p: dict) -> str:
     """SDR→AE linkage via AEEmail__c."""
     return f"Owner.AEEmail__c = '{p.get('ae_email', '')}'"
@@ -90,6 +99,7 @@ _CLAUSE_BUILDERS = {
     "{owner_clause}": ("Owner Clause", _owner_clause),
     "{quota_owner_clause}": ("Quota Owner Clause", _quota_owner_clause),
     "{custom_owner_clause}": ("Custom Owner Clause", _custom_owner_clause),
+    "{activity_owner_clause}": ("Activity Owner Clause", _activity_owner_clause),
     "{ae_email_clause}": ("AE Email Clause", _ae_email_clause),
     "{sdr_owner_clause}": ("SDR Owner Clause", _sdr_owner_clause),
     "{sdr_split_owner_clause}": ("SDR Split Owner Clause", _sdr_split_owner_clause),
@@ -100,6 +110,7 @@ BATCH_FIELD_MAP = {
     "{owner_clause}": "SplitOwnerId",
     "{quota_owner_clause}": "QuotaOwnerId",
     "{custom_owner_clause}": "Assigned_ID_Custom__c",
+    "{activity_owner_clause}": "OwnerId",
 }
 
 
@@ -120,6 +131,7 @@ def build_query(entry: SOQLEntry, params: dict) -> str:
     owner = _owner_clause(params)
     quota_owner = _quota_owner_clause(params)
     custom_owner = _custom_owner_clause(params)
+    activity_owner = _activity_owner_clause(params)
     ae_email = _ae_email_clause(params)
     sdr_owner = _sdr_owner_clause(params)
     sdr_split_owner = _sdr_split_owner_clause(params)
@@ -131,6 +143,7 @@ def build_query(entry: SOQLEntry, params: dict) -> str:
         owner_clause=owner,
         quota_owner_clause=quota_owner,
         custom_owner_clause=custom_owner,
+        activity_owner_clause=activity_owner,
         ae_email_clause=ae_email,
         sdr_owner_clause=sdr_owner,
         sdr_split_owner_clause=sdr_split_owner,
@@ -360,7 +373,7 @@ SELECT COUNT_DISTINCT(WhoId) total
 FROM Task
 WHERE (Type = 'Email' OR TaskSubtype = 'Email')
   AND Status = 'Completed'
-  AND {owner_clause}
+  AND {activity_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -379,7 +392,7 @@ FROM Task
 WHERE (Type = 'Call' OR TaskSubtype = 'Call')
   AND Status = 'Completed'
   AND Inbound_Call__c = false
-  AND {owner_clause}
+  AND {activity_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -399,7 +412,7 @@ WHERE (Type = 'Call' OR TaskSubtype = 'Call')
   AND Status = 'Completed'
   AND Inbound_Call__c = false
   AND Left_Voicemail__c = true
-  AND {owner_clause}
+  AND {activity_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -419,7 +432,7 @@ WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Foot Canvass'
   AND Meeting_Status__c LIKE 'Attended%'
-  AND {owner_clause}
+  AND {activity_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -439,7 +452,7 @@ WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Net New'
   AND Meeting_Status__c LIKE 'Attended%'
-  AND {owner_clause}
+  AND {activity_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -556,7 +569,7 @@ WHERE (Type = 'Email' OR TaskSubtype = 'Email')
   AND Related_To_Object__c != 'Case'
   AND WhoId IN (SELECT Id FROM Contact WHERE Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
                   'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant'))
-  AND {owner_clause}
+  AND {activity_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -581,7 +594,7 @@ WHERE (Type LIKE '%Call%' OR TaskSubtype LIKE '%Call%')
   AND Related_To_Object__c != 'Case'
   AND WhoId IN (SELECT Id FROM Contact WHERE Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
                   'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant'))
-  AND {owner_clause}
+  AND {activity_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -604,7 +617,7 @@ WHERE RecordType.Name = 'Partner Event'
   AND Related_To_Object__c != 'Case'
   AND WhoId IN (SELECT Id FROM Contact WHERE Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
                'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant'))
-  AND {owner_clause}
+  AND {activity_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -627,7 +640,7 @@ WHERE RecordType.Name = 'Partner Event'
   AND Related_To_Object__c != 'Case'
   AND WhoId IN (SELECT Id FROM Contact WHERE Type__c IN ('Employee Benefits Broker','CPA','Retirement Broker',
                'Financial Advisor','Fractional Executive','Bank','Advisor / Consultant'))
-  AND {owner_clause}
+  AND {activity_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
