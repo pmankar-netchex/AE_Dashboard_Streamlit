@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Pre-push guard: ensure queries_snapshot.json reflects the current Table Storage
+# state. If AZURE_STORAGE_CONNECTION_STRING is not set, the check is skipped with a warning.
+#
+# Install once:
+#   git config core.hooksPath .githooks
+set -u
+
+if [[ -z "${AZURE_STORAGE_CONNECTION_STRING:-}" ]]; then
+  echo "[pre-push] AZURE_STORAGE_CONNECTION_STRING not set — skipping queries sync check."
+  exit 0
+fi
+
+PY="${PYTHON:-python3}"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+if "$PY" "$REPO_ROOT/scripts/sync_queries.py" --check; then
+  exit 0
+fi
+
+echo ""
+echo "[pre-push] Table Storage has edits not reflected in queries_snapshot.json."
+echo "[pre-push] Export them and include in this commit before pushing:"
+echo ""
+echo "    python scripts/sync_queries.py --export"
+echo "    git add queries_snapshot.json"
+echo "    git commit --amend --no-edit   # or: git commit -m 'sync queries snapshot'"
+echo ""
+exit 1

@@ -108,6 +108,19 @@ command -v az >/dev/null 2>&1 || {
   echo "error: Azure CLI (az) not found" >&2
   exit 1
 }
+
+# Pull the latest Table Storage state into queries_snapshot.json so the deploy
+# doesn't leave live edits un-tracked. Fails closed when the caller hasn't set
+# AZURE_STORAGE_CONNECTION_STRING — pass --skip-sync to bypass.
+if [[ "${SKIP_SYNC:-0}" != "1" ]]; then
+  if [[ -z "${AZURE_STORAGE_CONNECTION_STRING:-}" ]]; then
+    echo "error: AZURE_STORAGE_CONNECTION_STRING not set (needed to export query snapshot)." >&2
+    echo "       Set it, or pass SKIP_SYNC=1 to bypass (not recommended)." >&2
+    exit 1
+  fi
+  echo "==> Exporting Table Storage queries -> queries_snapshot.json..."
+  "${PYTHON:-python3}" "$PROJECT_ROOT/scripts/sync_queries.py" --export
+fi
 if [[ "$USE_ACR_BUILD" -eq 0 ]]; then
   command -v docker >/dev/null 2>&1 || {
     echo "error: docker not found (install Docker or use --acr-build)" >&2

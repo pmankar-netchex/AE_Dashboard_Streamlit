@@ -29,7 +29,17 @@ from src.data_engine import (
     clear_query_failures,
 )
 from src.soql_registry import ALL_COLUMNS, COLUMN_BY_ID, build_query, resolve_owner_clauses
-from src.soql_store import load_overrides, save_override
+from src.soql_store import load_overrides, save_override, seed_missing
+
+
+@st.cache_resource
+def _seed_queries_once() -> int:
+    defaults = {e.col_id: e.template for e in ALL_COLUMNS
+                if not e.computed and not e.blocked and e.template}
+    return seed_missing(defaults)
+
+
+_seed_queries_once()
 from src.token_store import (
     create_session,
     load_session,

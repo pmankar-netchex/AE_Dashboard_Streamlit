@@ -765,60 +765,107 @@ S6_COL_AK = SOQLEntry(
     col_id="S6-COL-AK",
     display_name="Marketing Opps",
     section="Marketing",
-    description="BLOCKED: Source__c / LeadSource field values pending confirmation.",
-    aggregation="COUNT (TBD)",
+    description="Open opportunity splits attributed to Marketing source category (Net New, Revenue split).",
+    aggregation="COUNT(Id)",
     time_filter=True,
-    blocked=True,
-    template="",
+    template="""
+SELECT COUNT(Id) total
+FROM OpportunitySplit
+WHERE {owner_clause}
+  AND Opportunity.IsClosed = false
+  AND Opportunity.Type = 'Net New'
+  AND Opportunity.Opportunity_Source_Category__c = 'Marketing'
+  AND SplitTypeId = '1490f000000LvBPAA0'
+  AND Opportunity.CloseDate >= {time_start_date}
+  AND Opportunity.CloseDate <= {time_end_date}
+""",
 )
 
 S6_COL_AL = SOQLEntry(
     col_id="S6-COL-AL",
     display_name="Marketing Pipeline $",
     section="Marketing",
-    description="BLOCKED: Source__c / LeadSource field values pending confirmation.",
-    aggregation="SUM (TBD)",
+    description="Open pipeline split dollars attributed to Marketing source category (Net New, Revenue split).",
+    aggregation="SUM(SplitAmount)",
     time_filter=True,
-    blocked=True,
-    template="",
+    template="""
+SELECT SUM(SplitAmount) total
+FROM OpportunitySplit
+WHERE {owner_clause}
+  AND Opportunity.IsClosed = false
+  AND Opportunity.Type = 'Net New'
+  AND Opportunity.Opportunity_Source_Category__c = 'Marketing'
+  AND SplitTypeId = '1490f000000LvBPAA0'
+  AND Opportunity.CloseDate >= {time_start_date}
+  AND Opportunity.CloseDate <= {time_end_date}
+""",
 )
 
 # ============================================================
 # SECTION 5 — Marketing  [S5-COL-AB through S5-COL-AD]
 # ============================================================
-# NOTE: ALL three are BLOCKED pending Source__c / LeadSource field value confirmation.
 
 S5_COL_AB = SOQLEntry(
     col_id="S5-COL-AB",
     display_name="Mtgs from Events",
     section="Marketing",
-    description="BLOCKED: Source__c / LeadSource field values pending confirmation.",
-    aggregation="COUNT (TBD)",
+    description="Count of net-new prospect meetings sourced from marketing events (conferences).",
+    aggregation="COUNT(Id)",
     time_filter=True,
-    blocked=True,
-    template="",
+    template="""
+SELECT COUNT(Id) total
+FROM Event
+WHERE {activity_owner_clause}
+  AND Is_Parent_Event__c = true
+  AND RecordType.Name = 'Sales Event'
+  AND Meeting_Type__c = 'Prospect Meeting'
+  AND Meeting_Specifics__c = 'Net New'
+  AND Meeting_Source__c = 'Conference'
+  AND ActivityDate >= {time_start_date}
+  AND ActivityDate <= {time_end_date}
+""",
 )
 
 S5_COL_AC = SOQLEntry(
     col_id="S5-COL-AC",
     display_name="Mtgs from Inbound",
     section="Marketing",
-    description="BLOCKED: Source__c / LeadSource field values pending confirmation.",
-    aggregation="COUNT (TBD)",
+    description="Count of net-new prospect meetings sourced from inbound hand-raisers.",
+    aggregation="COUNT(Id)",
     time_filter=True,
-    blocked=True,
-    template="",
+    template="""
+SELECT COUNT(Id) total
+FROM Event
+WHERE {activity_owner_clause}
+  AND Is_Parent_Event__c = true
+  AND RecordType.Name = 'Sales Event'
+  AND Meeting_Type__c = 'Prospect Meeting'
+  AND Meeting_Specifics__c = 'Net New'
+  AND Meeting_Source__c = 'Hand-raiser'
+  AND ActivityDate >= {time_start_date}
+  AND ActivityDate <= {time_end_date}
+""",
 )
 
 S5_COL_AD = SOQLEntry(
     col_id="S5-COL-AD",
     display_name="Mtgs from Other Marketing",
     section="Marketing",
-    description="BLOCKED: Source__c / LeadSource field values pending confirmation.",
-    aggregation="COUNT (TBD)",
+    description="Count of net-new prospect meetings sourced from webinars or content.",
+    aggregation="COUNT(Id)",
     time_filter=True,
-    blocked=True,
-    template="",
+    template="""
+SELECT COUNT(Id) total
+FROM Event
+WHERE {activity_owner_clause}
+  AND Is_Parent_Event__c = true
+  AND RecordType.Name = 'Sales Event'
+  AND Meeting_Type__c = 'Prospect Meeting'
+  AND Meeting_Specifics__c = 'Net New'
+  AND Meeting_Source__c IN ('Webinar', 'Content')
+  AND ActivityDate >= {time_start_date}
+  AND ActivityDate <= {time_end_date}
+""",
 )
 
 # ============================================================
