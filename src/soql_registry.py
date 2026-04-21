@@ -153,6 +153,7 @@ S1_COL_C = SOQLEntry(
 SELECT SUM(QuotaAmount) total
 FROM ForecastingQuota
 WHERE {quota_owner_clause}
+  AND ForecastingType.MasterLabel = 'Revenue'
   AND StartDate >= {fiscal_year_start}
   AND StartDate <= TODAY
 """,
@@ -170,6 +171,7 @@ SELECT SUM(SplitAmount) total
 FROM OpportunitySplit
 WHERE Opportunity.StageName = 'Closed/Won'
   AND Opportunity.Revenue_Type__c = 'Net New'
+  AND SplitType.MasterLabel = 'Revenue'
   AND {owner_clause}
   AND Opportunity.CloseDate >= {fiscal_year_start}
   AND Opportunity.CloseDate <= TODAY
@@ -198,6 +200,7 @@ S1_COL_F = SOQLEntry(
 SELECT SUM(QuotaAmount) total
 FROM ForecastingQuota
 WHERE {quota_owner_clause}
+  AND ForecastingType.MasterLabel = 'Revenue'
   AND StartDate = THIS_MONTH
 """,
 )
@@ -214,6 +217,7 @@ SELECT SUM(SplitAmount) total
 FROM OpportunitySplit
 WHERE Opportunity.StageName = 'Closed/Won'
   AND Opportunity.Revenue_Type__c = 'Net New'
+  AND SplitType.MasterLabel = 'Revenue'
   AND {owner_clause}
   AND Opportunity.CloseDate = THIS_MONTH
 """,
@@ -242,6 +246,7 @@ SELECT SUM(SplitAmount) total
 FROM OpportunitySplit
 WHERE Opportunity.IsClosed = false
   AND Opportunity.Revenue_Type__c = 'Net New'
+  AND SplitType.MasterLabel = 'Revenue'
   AND {owner_clause}
   AND Opportunity.CloseDate = THIS_MONTH
 """,
@@ -259,6 +264,7 @@ SELECT SUM(SplitAmount) total
 FROM OpportunitySplit
 WHERE Opportunity.IsClosed = false
   AND Opportunity.Revenue_Type__c = 'Net New'
+  AND SplitType.MasterLabel = 'Revenue'
   AND {owner_clause}
   AND Opportunity.CloseDate = NEXT_MONTH
 """,
@@ -276,6 +282,7 @@ SELECT COUNT(Id) total
 FROM OpportunitySplit
 WHERE {owner_clause}
   AND Opportunity.Revenue_Type__c = 'Net New'
+  AND SplitType.MasterLabel = 'Revenue'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
 """,
@@ -293,6 +300,7 @@ SELECT SUM(SplitAmount) total
 FROM OpportunitySplit
 WHERE {owner_clause}
   AND Opportunity.Revenue_Type__c = 'Net New'
+  AND SplitType.MasterLabel = 'Revenue'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
 """,
@@ -351,7 +359,7 @@ S2_COL_O = SOQLEntry(
 SELECT COUNT_DISTINCT(WhoId) total
 FROM Task
 WHERE (Type = 'Email' OR TaskSubtype = 'Email')
-  AND IsClosed = true
+  AND Status = 'Completed'
   AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -368,8 +376,9 @@ S2_COL_P = SOQLEntry(
     template="""
 SELECT COUNT_DISTINCT(WhoId) total
 FROM Task
-WHERE (Type LIKE '%Call%' OR TaskSubtype LIKE '%Call%')
-  AND IsClosed = true
+WHERE (Type = 'Call' OR TaskSubtype = 'Call')
+  AND Status = 'Completed'
+  AND Inbound_Call__c = false
   AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -380,11 +389,20 @@ S2_COL_Q = SOQLEntry(
     col_id="S2-COL-Q",
     display_name="Unique Voicemail Recipients",
     section="Self-Gen Pipeline Creation",
-    description="BLOCKED: voicemail indicator field not yet confirmed. Shows placeholder.",
-    aggregation="TBD",
+    description="Count of unique contacts/leads where AE left a voicemail (outbound calls only).",
+    aggregation="COUNT_DISTINCT(WhoId)",
     time_filter=True,
-    blocked=True,
-    template="",
+    template="""
+SELECT COUNT_DISTINCT(WhoId) total
+FROM Task
+WHERE (Type = 'Call' OR TaskSubtype = 'Call')
+  AND Status = 'Completed'
+  AND Inbound_Call__c = false
+  AND Left_Voicemail__c = true
+  AND {owner_clause}
+  AND ActivityDate >= {time_start_date}
+  AND ActivityDate <= {time_end_date}
+""",
 )
 
 S2_COL_R = SOQLEntry(
@@ -400,6 +418,7 @@ FROM Event
 WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Foot Canvass'
+  AND Meeting_Status__c LIKE 'Attended%'
   AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -419,6 +438,7 @@ FROM Event
 WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Net New'
+  AND Meeting_Status__c LIKE 'Attended%'
   AND {owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -441,7 +461,8 @@ S3_COL_T = SOQLEntry(
 SELECT COUNT_DISTINCT(WhoId) total
 FROM Task
 WHERE (Type = 'Email' OR TaskSubtype = 'Email')
-  AND IsClosed = true
+  AND Status = 'Completed'
+  AND Assigned_Role__c LIKE '%SDR%'
   AND {sdr_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -458,8 +479,10 @@ S3_COL_U = SOQLEntry(
     template="""
 SELECT COUNT_DISTINCT(WhoId) total
 FROM Task
-WHERE (Type LIKE '%Call%' OR TaskSubtype LIKE '%Call%')
-  AND IsClosed = true
+WHERE (Type = 'Call' OR TaskSubtype = 'Call')
+  AND Status = 'Completed'
+  AND Inbound_Call__c = false
+  AND Assigned_Role__c LIKE '%SDR%'
   AND {sdr_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -479,6 +502,8 @@ FROM Event
 WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Net New'
+  AND Meeting_Status__c = 'Scheduled'
+  AND CreatedBy.UserRole.Name LIKE '%SDR%'
   AND {sdr_owner_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
@@ -495,8 +520,10 @@ S3_COL_W = SOQLEntry(
     template="""
 SELECT COUNT(Id) total
 FROM Event
-WHERE Meeting_Type__c = 'Prospect Meeting'
+WHERE RecordType.Name = 'Sales Event'
+  AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Net New'
+  AND Meeting_Status__c LIKE 'Attended%'
   AND CreatedBy.UserRole.Name LIKE '%SDR%'
   AND {sdr_owner_clause}
   AND ActivityDate >= {time_start_date}
@@ -661,6 +688,7 @@ SELECT COUNT(Id) total
 FROM OpportunitySplit
 WHERE {sdr_split_owner_clause}
   AND Opportunity.Revenue_Type__c = 'Net New'
+  AND Opportunity.SDR__c != null
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
 """,
@@ -678,6 +706,7 @@ SELECT SUM(SplitAmount) total
 FROM OpportunitySplit
 WHERE {sdr_split_owner_clause}
   AND Opportunity.Revenue_Type__c = 'Net New'
+  AND Opportunity.SDR__c != null
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
 """,
@@ -694,7 +723,7 @@ S6_COL_AI = SOQLEntry(
 SELECT COUNT(Id) total
 FROM OpportunitySplit
 WHERE {owner_clause}
-  AND Opportunity.LeadSource LIKE '%Partner%'
+  AND Opportunity.Opportunity_Source__c LIKE '%Partner%'
   AND Opportunity.Revenue_Type__c = 'Net New'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
@@ -712,7 +741,7 @@ S6_COL_AJ = SOQLEntry(
 SELECT SUM(SplitAmount) total
 FROM OpportunitySplit
 WHERE {owner_clause}
-  AND Opportunity.LeadSource LIKE '%Partner%'
+  AND Opportunity.Opportunity_Source__c LIKE '%Partner%'
   AND Opportunity.Revenue_Type__c = 'Net New'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
