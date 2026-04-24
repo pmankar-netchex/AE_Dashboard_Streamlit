@@ -71,13 +71,24 @@ def _ae_email_clause(p: dict) -> str:
 def _sdr_owner_clause(p: dict) -> str:
     """Build OwnerId IN (subquery) from AE's Assigned_SDR_Outbound__c — SDR(s) associated with the given AE.
     Used on Task/Event where the queried object has a direct OwnerId field."""
-    
+
     ae_id = p.get("ae_user_id", "")
     if not ae_id:
         return "OwnerId != null"
     # AE User has Assigned_SDR_Outbound__c pointing to SDR User(s); use those as owner IDs
     return (
         f"OwnerId IN (SELECT Assigned_SDR_Outbound__c FROM User WHERE Id = '{ae_id}'"
+        f" AND Assigned_SDR_Outbound__c != null)"
+    )
+
+
+def _sdr_created_by_clause(p: dict) -> str:
+    """CreatedById variant of the SDR filter — Event belongs to the AE but was created by the AE's SDR."""
+    ae_id = p.get("ae_user_id", "")
+    if not ae_id:
+        return "CreatedById != null"
+    return (
+        f"CreatedById IN (SELECT Assigned_SDR_Outbound__c FROM User WHERE Id = '{ae_id}'"
         f" AND Assigned_SDR_Outbound__c != null)"
     )
 
@@ -102,6 +113,7 @@ _CLAUSE_BUILDERS = {
     "{activity_owner_clause}": ("Activity Owner Clause", _activity_owner_clause),
     "{ae_email_clause}": ("AE Email Clause", _ae_email_clause),
     "{sdr_owner_clause}": ("SDR Owner Clause", _sdr_owner_clause),
+    "{sdr_created_by_clause}": ("SDR CreatedBy Clause", _sdr_created_by_clause),
     "{sdr_split_owner_clause}": ("SDR Split Owner Clause", _sdr_split_owner_clause),
 }
 
@@ -134,6 +146,7 @@ def build_query(entry: SOQLEntry, params: dict) -> str:
     activity_owner = _activity_owner_clause(params)
     ae_email = _ae_email_clause(params)
     sdr_owner = _sdr_owner_clause(params)
+    sdr_created_by = _sdr_created_by_clause(params)
     sdr_split_owner = _sdr_split_owner_clause(params)
     # Defaults for params that only some templates reference — use a well-formed
     # but never-matching ID so queries are syntactically valid when unresolved.
@@ -146,6 +159,7 @@ def build_query(entry: SOQLEntry, params: dict) -> str:
         activity_owner_clause=activity_owner,
         ae_email_clause=ae_email,
         sdr_owner_clause=sdr_owner,
+        sdr_created_by_clause=sdr_created_by,
         sdr_split_owner_clause=sdr_split_owner,
         **merged,
     )
@@ -159,7 +173,7 @@ S1_COL_C = SOQLEntry(
     col_id="S1-COL-C",
     display_name="Quota YTD",
     section="Pipeline & Quota",
-    description="Sum of quota amounts from fiscal year start to today.",
+    description="Total quota assigned to the AE from the start of the fiscal year through today.",
     aggregation="SUM(QuotaAmount)",
     time_filter=False,
     template="""
@@ -176,7 +190,7 @@ S1_COL_D = SOQLEntry(
     col_id="S1-COL-D",
     display_name="Bookings YTD",
     section="Pipeline & Quota",
-    description="Sum of Closed Won split amounts from fiscal year start to today (Net New, split-credited).",
+    description="Total Net New revenue closed-won by the AE (split-credited) from the start of the fiscal year through today.",
     aggregation="SUM(SplitAmount)",
     time_filter=False,
     template="""
@@ -195,7 +209,7 @@ S1_COL_E = SOQLEntry(
     col_id="S1-COL-E",
     display_name="YTD Quota Attainment %",
     section="Pipeline & Quota",
-    description="Computed: Bookings YTD / Quota YTD. No SOQL.",
+    description="Percentage of fiscal-year quota attained so far — Bookings YTD divided by Quota YTD (computed, no SOQL).",
     aggregation="D / C",
     time_filter=False,
     computed=True,
@@ -206,7 +220,7 @@ S1_COL_F = SOQLEntry(
     col_id="S1-COL-F",
     display_name="Quota This Month",
     section="Pipeline & Quota",
-    description="Sum of quota amounts for the current calendar month.",
+    description="Total quota assigned to the AE for the current calendar month.",
     aggregation="SUM(QuotaAmount)",
     time_filter=False,
     template="""
@@ -222,7 +236,7 @@ S1_COL_G = SOQLEntry(
     col_id="S1-COL-G",
     display_name="Bookings This Month",
     section="Pipeline & Quota",
-    description="Sum of Closed Won split amounts for the current calendar month (Net New, split-credited).",
+    description="Total Net New revenue closed-won by the AE (split-credited) in the current calendar month.",
     aggregation="SUM(SplitAmount)",
     time_filter=False,
     template="""
@@ -240,7 +254,7 @@ S1_COL_H = SOQLEntry(
     col_id="S1-COL-H",
     display_name="MTD Quota Attainment %",
     section="Pipeline & Quota",
-    description="Computed: Bookings This Month / Quota This Month. No SOQL.",
+    description="Percentage of this month's quota attained — Bookings This Month divided by Quota This Month (computed, no SOQL).",
     aggregation="G / F",
     time_filter=False,
     computed=True,
@@ -251,7 +265,7 @@ S1_COL_I = SOQLEntry(
     col_id="S1-COL-I",
     display_name="Open Pipeline (This Month)",
     section="Pipeline & Quota",
-    description="Sum of open (not closed) split amounts closing this month (Net New, split-credited).",
+    description="Open Net New pipeline dollars (split-credited) with a Close Date in the current calendar month.",
     aggregation="SUM(SplitAmount)",
     time_filter=False,
     template="""
@@ -269,7 +283,7 @@ S1_COL_J = SOQLEntry(
     col_id="S1-COL-J",
     display_name="Open Pipeline (Next Month)",
     section="Pipeline & Quota",
-    description="Sum of open split amounts closing next month (Net New, split-credited).",
+    description="Open Net New pipeline dollars (split-credited) with a Close Date in the next calendar month.",
     aggregation="SUM(SplitAmount)",
     time_filter=False,
     template="""
@@ -285,9 +299,9 @@ WHERE Opportunity.IsClosed = false
 
 S1_COL_K = SOQLEntry(
     col_id="S1-COL-K",
-    display_name="# Opportunities Created",
+    display_name="(period) # Opportunities Created",
     section="Pipeline & Quota",
-    description="Count of opportunity splits the AE is on, created within the selected time period (Net New).",
+    description="Number of Net New opportunities the AE is split-credited on that were created in the selected period.",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -303,9 +317,9 @@ WHERE {owner_clause}
 
 S1_COL_L = SOQLEntry(
     col_id="S1-COL-L",
-    display_name="Pipeline $ Created",
+    display_name="(period) Pipeline $ Created",
     section="Pipeline & Quota",
-    description="Sum of split amounts for opportunities created within the selected time period (Net New, split-credited).",
+    description="Total Net New pipeline dollars (split-credited) from opportunities created in the selected period.",
     aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
@@ -321,9 +335,9 @@ WHERE {owner_clause}
 
 S1_COL_M = SOQLEntry(
     col_id="S1-COL-M",
-    display_name="Total Closed Won",
+    display_name="(period) Total Closed Won",
     section="Pipeline & Quota",
-    description="Sum of Closed Won split amounts in the selected time period (Net New, split-credited).",
+    description="Total Net New closed-won revenue (split-credited) with a Close Date in the selected period.",
     aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
@@ -339,9 +353,9 @@ WHERE Opportunity.StageName = 'Closed/Won'
 
 S1_COL_N = SOQLEntry(
     col_id="S1-COL-N",
-    display_name="Total Closed Lost",
+    display_name="(period) Total Closed Lost",
     section="Pipeline & Quota",
-    description="Sum of Closed Lost split amounts in the selected time period (Net New, split-credited).",
+    description="Total Net New closed-lost revenue (split-credited) with a Close Date in the selected period.",
     aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
@@ -363,9 +377,9 @@ WHERE Opportunity.StageName = 'Closed/Lost'
 
 S2_COL_O = SOQLEntry(
     col_id="S2-COL-O",
-    display_name="Unique Email Recipients",
+    display_name="(period) Unique Email Recipients",
     section="Self-Gen Pipeline Creation",
-    description="Count of unique contacts/leads emailed by the AE (prospects only, not AM/SDR).",
+    description="Number of distinct prospect contacts or leads emailed by the AE (excludes AM/SDR activity).",
     aggregation="COUNT_DISTINCT(WhoId)",
     time_filter=True,
     template="""
@@ -381,9 +395,9 @@ WHERE (Type = 'Email' OR TaskSubtype = 'Email')
 
 S2_COL_P = SOQLEntry(
     col_id="S2-COL-P",
-    display_name="Unique Call Recipients",
+    display_name="(period) Unique Call Recipients",
     section="Self-Gen Pipeline Creation",
-    description="Count of unique contacts/leads called by the AE (prospects only, not AM/SDR).",
+    description="Number of distinct prospect contacts or leads the AE called on outbound calls (excludes AM/SDR activity).",
     aggregation="COUNT_DISTINCT(WhoId)",
     time_filter=True,
     template="""
@@ -400,9 +414,9 @@ WHERE (Type = 'Call' OR TaskSubtype = 'Call')
 
 S2_COL_Q = SOQLEntry(
     col_id="S2-COL-Q",
-    display_name="Unique Voicemail Recipients",
+    display_name="(period) Unique Voicemail Recipients",
     section="Self-Gen Pipeline Creation",
-    description="Count of unique contacts/leads where AE left a voicemail (outbound calls only).",
+    description="Number of distinct prospect contacts or leads where the AE left a voicemail on an outbound call.",
     aggregation="COUNT_DISTINCT(WhoId)",
     time_filter=True,
     template="""
@@ -420,9 +434,9 @@ WHERE (Type = 'Call' OR TaskSubtype = 'Call')
 
 S2_COL_R = SOQLEntry(
     col_id="S2-COL-R",
-    display_name="Unique Accts w/ Foot Canvass",
+    display_name="(period) Unique Accts w/ Foot Canvass",
     section="Self-Gen Pipeline Creation",
-    description="Count of unique accounts where AE conducted a foot canvass (prospect meeting).",
+    description="Number of distinct accounts where the AE conducted an attended foot-canvass prospect meeting.",
     aggregation="COUNT_DISTINCT(WhatId)",
     time_filter=True,
     template="""
@@ -440,9 +454,9 @@ WHERE RecordType.Name = 'Sales Event'
 
 S2_COL_S = SOQLEntry(
     col_id="S2-COL-S",
-    display_name="Unique Accts w/ Net New Mtgs",
+    display_name="(period) Unique Accts w/ Net New Mtgs",
     section="Self-Gen Pipeline Creation",
-    description="Count of unique accounts where AE created a net new prospect meeting.",
+    description="Number of distinct accounts where the AE held an attended Net New prospect meeting.",
     aggregation="COUNT_DISTINCT(WhatId)",
     time_filter=True,
     template="""
@@ -465,9 +479,9 @@ WHERE RecordType.Name = 'Sales Event'
 
 S3_COL_T = SOQLEntry(
     col_id="S3-COL-T",
-    display_name="SDR Unique Emails",
+    display_name="(period) SDR Unique Emails",
     section="SDR Activity",
-    description="Count of unique contacts/leads emailed by SDRs supporting this AE.",
+    description="Number of distinct contacts or leads emailed by the SDR(s) assigned to support this AE.",
     aggregation="COUNT_DISTINCT(WhoId)",
     time_filter=True,
     template="""
@@ -484,9 +498,9 @@ WHERE (Type = 'Email' OR TaskSubtype = 'Email')
 
 S3_COL_U = SOQLEntry(
     col_id="S3-COL-U",
-    display_name="SDR Unique Calls",
+    display_name="(period) SDR Unique Calls",
     section="SDR Activity",
-    description="Count of unique contacts/leads called by SDRs supporting this AE.",
+    description="Number of distinct contacts or leads called on outbound calls by the SDR(s) assigned to support this AE.",
     aggregation="COUNT_DISTINCT(WhoId)",
     time_filter=True,
     template="""
@@ -504,9 +518,9 @@ WHERE (Type = 'Call' OR TaskSubtype = 'Call')
 
 S3_COL_V = SOQLEntry(
     col_id="S3-COL-V",
-    display_name="SDR Unique Mtgs Scheduled",
+    display_name="(period) SDR Unique Mtgs Scheduled",
     section="SDR Activity",
-    description="Count of net-new prospect meetings scheduled by SDRs (AE is the owner).",
+    description="Number of Net New prospect meetings scheduled by this AE's SDR(s).",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -516,8 +530,7 @@ WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Net New'
   AND Meeting_Status__c = 'Scheduled'
-  AND CreatedBy.UserRole.Name LIKE '%SDR%'
-  AND {sdr_owner_clause}
+  AND {sdr_created_by_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -525,9 +538,9 @@ WHERE RecordType.Name = 'Sales Event'
 
 S3_COL_W = SOQLEntry(
     col_id="S3-COL-W",
-    display_name="SDR Unique Mtgs Held",
+    display_name="(period) SDR Unique Mtgs Held",
     section="SDR Activity",
-    description="Count of net-new prospect meetings held where meeting was SDR-created.",
+    description="Number of attended Net New prospect meetings that were created by this AE's SDR(s).",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -537,8 +550,7 @@ WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Net New'
   AND Meeting_Status__c LIKE 'Attended%'
-  AND CreatedBy.UserRole.Name LIKE '%SDR%'
-  AND {sdr_owner_clause}
+  AND {sdr_created_by_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -552,9 +564,9 @@ WHERE RecordType.Name = 'Sales Event'
 
 S4_COL_X = SOQLEntry(
     col_id="S4-COL-X",
-    display_name="CP Unique Emails",
+    display_name="(period) CP Unique Emails",
     section="Channel Partners",
-    description="Count of unique channel partner contacts emailed by the AE.",
+    description="Number of distinct channel-partner contacts emailed by the AE.",
     aggregation="COUNT_DISTINCT(WhoId)",
     time_filter=True,
     template="""
@@ -577,9 +589,9 @@ WHERE (Type = 'Email' OR TaskSubtype = 'Email')
 
 S4_COL_Y = SOQLEntry(
     col_id="S4-COL-Y",
-    display_name="CP Unique Calls",
+    display_name="(period) CP Unique Calls",
     section="Channel Partners",
-    description="Count of unique channel partner contacts called by the AE.",
+    description="Number of distinct channel-partner contacts the AE called on outbound calls.",
     aggregation="COUNT_DISTINCT(WhoId)",
     time_filter=True,
     template="""
@@ -602,9 +614,9 @@ WHERE (Type LIKE '%Call%' OR TaskSubtype LIKE '%Call%')
 
 S4_COL_Z = SOQLEntry(
     col_id="S4-COL-Z",
-    display_name="CP Mtgs Scheduled",
+    display_name="(period) CP Mtgs Scheduled",
     section="Channel Partners",
-    description="Count of channel partner meetings scheduled.",
+    description="Number of scheduled channel-partner meetings owned by the AE.",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -625,9 +637,9 @@ WHERE RecordType.Name = 'Partner Event'
 
 S4_COL_AA = SOQLEntry(
     col_id="S4-COL-AA",
-    display_name="CP Mtgs Held",
+    display_name="(period) CP Mtgs Held",
     section="Channel Partners",
-    description="Count of channel partner meetings attended.",
+    description="Number of channel-partner meetings attended (held) by the AE.",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -650,14 +662,14 @@ WHERE RecordType.Name = 'Partner Event'
 # SECTION 6 — Pipeline Generated  [S6-COL-AE through S6-COL-AL]
 # ============================================================
 # Breaks down pipeline creation by source: Self-Gen, SDR, Channel Partner, Marketing.
-# Self-Gen and SDR queries use {ae_user_id} directly (per-AE, not batchable).
-# CP queries use {owner_clause} + LeadSource (batchable). Marketing is BLOCKED.
+# Self-Gen queries use {ae_user_id} directly (per-AE, not batchable).
+# SDR and CP queries use {owner_clause} + source filters (batchable). Marketing is BLOCKED.
 
 S6_COL_AE = SOQLEntry(
     col_id="S6-COL-AE",
-    display_name="Self-Gen Opps",
+    display_name="(period) Self-Gen Opps",
     section="Self-Gen Pipeline Creation",
-    description="Opportunity splits where the AE is a split recipient and the AE created the opp (Net New).",
+    description="Number of Net New opportunities self-generated by the AE (the AE is both creator and split-credited).",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -673,9 +685,9 @@ WHERE SplitOwnerId = '{ae_user_id}'
 
 S6_COL_AF = SOQLEntry(
     col_id="S6-COL-AF",
-    display_name="Self-Gen Pipeline $",
+    display_name="(period) Self-Gen Pipeline $",
     section="Self-Gen Pipeline Creation",
-    description="Split dollars from opportunities the AE created themselves (Net New, split-credited).",
+    description="Pipeline dollars (split-credited) from Net New opportunities self-generated by the AE.",
     aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
@@ -691,17 +703,18 @@ WHERE SplitOwnerId = '{ae_user_id}'
 
 S6_COL_AG = SOQLEntry(
     col_id="S6-COL-AG",
-    display_name="SDR Opps",
+    display_name="(period) SDR Opps",
     section="SDR Activity",
-    description="Opportunity splits where the AE is a split recipient and the AE's SDR created the opp (Net New).",
+    description="Number of Net New opportunities created by this AE's SDR where the AE is split-credited.",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
 SELECT COUNT(Id) total
 FROM OpportunitySplit
-WHERE {sdr_split_owner_clause}
+WHERE {owner_clause}
   AND Opportunity.Revenue_Type__c = 'Net New'
-  AND Opportunity.SDR__c != null
+  AND Opportunity.Opportunity_Source_Category__c = 'Self-Generated'
+  AND Opportunity.Opportunity_Source_Team__c = 'Sales Development'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
 """,
@@ -709,17 +722,18 @@ WHERE {sdr_split_owner_clause}
 
 S6_COL_AH = SOQLEntry(
     col_id="S6-COL-AH",
-    display_name="SDR Pipeline $",
+    display_name="(period) SDR Pipeline $",
     section="SDR Activity",
-    description="Split dollars from opportunities created by the AE's assigned SDR (Net New, split-credited).",
+    description="Pipeline dollars (split-credited) from Net New opportunities created by this AE's assigned SDR.",
     aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
 SELECT SUM(SplitAmount) total
 FROM OpportunitySplit
-WHERE {sdr_split_owner_clause}
+WHERE {owner_clause}
   AND Opportunity.Revenue_Type__c = 'Net New'
-  AND Opportunity.SDR__c != null
+  AND Opportunity.Opportunity_Source_Category__c = 'Self-Generated'
+  AND Opportunity.Opportunity_Source_Team__c = 'Sales Development'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
 """,
@@ -727,9 +741,9 @@ WHERE {sdr_split_owner_clause}
 
 S6_COL_AI = SOQLEntry(
     col_id="S6-COL-AI",
-    display_name="CP Opps",
+    display_name="(period) CP Opps",
     section="Channel Partners",
-    description="Channel partner-sourced opportunity splits (Net New). Edit SOQL to match your org's LeadSource values.",
+    description="Number of Net New opportunities sourced from channel partners where the AE is split-credited. Edit the SOQL to match your org's lead-source values.",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -745,9 +759,9 @@ WHERE {owner_clause}
 
 S6_COL_AJ = SOQLEntry(
     col_id="S6-COL-AJ",
-    display_name="CP Pipeline $",
+    display_name="(period) CP Pipeline $",
     section="Channel Partners",
-    description="Split dollars from channel partner-sourced opportunities (Net New, split-credited). Edit SOQL to match your org's LeadSource values.",
+    description="Pipeline dollars (split-credited) from Net New opportunities sourced from channel partners. Edit the SOQL to match your org's lead-source values.",
     aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
@@ -763,9 +777,9 @@ WHERE {owner_clause}
 
 S6_COL_AK = SOQLEntry(
     col_id="S6-COL-AK",
-    display_name="Marketing Opps",
+    display_name="(period) Marketing Opps",
     section="Marketing",
-    description="Open opportunity splits attributed to Marketing source category (Net New, Revenue split).",
+    description="Number of open Net New opportunities (Revenue split) attributed to the Marketing source category.",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -783,9 +797,9 @@ WHERE {owner_clause}
 
 S6_COL_AL = SOQLEntry(
     col_id="S6-COL-AL",
-    display_name="Marketing Pipeline $",
+    display_name="(period) Marketing Pipeline $",
     section="Marketing",
-    description="Open pipeline split dollars attributed to Marketing source category (Net New, Revenue split).",
+    description="Open pipeline dollars (Revenue split) from Net New opportunities attributed to the Marketing source category.",
     aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
@@ -807,9 +821,9 @@ WHERE {owner_clause}
 
 S5_COL_AB = SOQLEntry(
     col_id="S5-COL-AB",
-    display_name="Mtgs from Events",
+    display_name="(period) Mtgs from Events",
     section="Marketing",
-    description="Count of net-new prospect meetings sourced from marketing events (conferences).",
+    description="Number of Net New prospect meetings sourced from marketing events such as conferences.",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -828,9 +842,9 @@ WHERE {activity_owner_clause}
 
 S5_COL_AC = SOQLEntry(
     col_id="S5-COL-AC",
-    display_name="Mtgs from Inbound",
+    display_name="(period) Mtgs from Inbound",
     section="Marketing",
-    description="Count of net-new prospect meetings sourced from inbound hand-raisers.",
+    description="Number of Net New prospect meetings sourced from inbound hand-raisers.",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -849,9 +863,9 @@ WHERE {activity_owner_clause}
 
 S5_COL_AD = SOQLEntry(
     col_id="S5-COL-AD",
-    display_name="Mtgs from Other Marketing",
+    display_name="(period) Mtgs from Other Marketing",
     section="Marketing",
-    description="Count of net-new prospect meetings sourced from webinars or content.",
+    description="Number of Net New prospect meetings sourced from other marketing channels (webinars or content).",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
