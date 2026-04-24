@@ -88,34 +88,34 @@ def display_kpi_widgets(df: pd.DataFrame):
     # Row 1 — Quota & Attainment
     row1 = st.columns(6)
     kpi_row1 = [
-        ("Quota YTD", "S1-COL-C", fmt_currency, False),
-        ("Bookings YTD", "S1-COL-D", fmt_currency, False),
-        ("YTD Attainment (avg)", "S1-COL-E", fmt_percent, True),
-        ("Quota This Mo", "S1-COL-F", fmt_currency, False),
-        ("Bookings This Mo", "S1-COL-G", fmt_currency, False),
-        ("MTD Attainment (avg)", "S1-COL-H", fmt_percent, True),
+        ("S1-COL-C", fmt_currency, False),
+        ("S1-COL-D", fmt_currency, False),
+        ("S1-COL-E", fmt_percent, True),
+        ("S1-COL-F", fmt_currency, False),
+        ("S1-COL-G", fmt_currency, False),
+        ("S1-COL-H", fmt_percent, True),
     ]
-    for i, (label, col_id, formatter, is_avg) in enumerate(kpi_row1):
+    for i, (col_id, formatter, is_avg) in enumerate(kpi_row1):
         if col_id in df.columns:
             numeric = pd.to_numeric(df[col_id], errors="coerce")
             val = numeric.mean() if is_avg else numeric.sum()
-            row1[i].metric(label, formatter(val))
+            row1[i].metric(COLUMN_BY_ID[col_id].display_name, formatter(val))
 
     # Row 2 — Pipeline & Outcomes
     row2 = st.columns(6)
     kpi_row2 = [
-        ("Opps Created", "S1-COL-K", fmt_number, False),
-        ("Pipeline $ Created", "S1-COL-L", fmt_currency, False),
-        ("Open Pipeline (This Mo)", "S1-COL-I", fmt_currency, False),
-        ("Open Pipeline (Next Mo)", "S1-COL-J", fmt_currency, False),
-        ("Closed Won (Period)", "S1-COL-M", fmt_currency, False),
-        ("Closed Lost (Period)", "S1-COL-N", fmt_currency, False),
+        ("S1-COL-K", fmt_number, False),
+        ("S1-COL-L", fmt_currency, False),
+        ("S1-COL-I", fmt_currency, False),
+        ("S1-COL-J", fmt_currency, False),
+        ("S1-COL-M", fmt_currency, False),
+        ("S1-COL-N", fmt_currency, False),
     ]
-    for i, (label, col_id, formatter, is_avg) in enumerate(kpi_row2):
+    for i, (col_id, formatter, is_avg) in enumerate(kpi_row2):
         if col_id in df.columns:
             numeric = pd.to_numeric(df[col_id], errors="coerce")
             val = numeric.mean() if is_avg else numeric.sum()
-            row2[i].metric(label, formatter(val))
+            row2[i].metric(COLUMN_BY_ID[col_id].display_name, formatter(val))
 
 
 def display_dashboard_table(df: pd.DataFrame):
