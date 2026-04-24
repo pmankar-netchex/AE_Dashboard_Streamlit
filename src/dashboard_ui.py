@@ -27,46 +27,6 @@ CURRENCY_COLS = {
 PERCENT_COLS = {"S1-COL-E", "S1-COL-H"}
 LOWER_IS_BETTER = {"S1-COL-N"}
 
-TOOLTIPS: dict[str, str] = {
-    "S1-COL-C": "Quota YTD: SUM(ForecastingQuota.QuotaAmount) from fiscal year start to today. Time-filter immune.",
-    "S1-COL-D": "Bookings YTD: SUM(Opportunity.Amount) where StageName='Closed Won', fiscal year to date. Time-filter immune.",
-    "S1-COL-E": "YTD Quota Attainment %: Bookings YTD / Quota YTD (computed, no SOQL). Time-filter immune.",
-    "S1-COL-F": "Quota This Month: SUM(ForecastingQuota.QuotaAmount) for THIS_MONTH. Time-filter immune.",
-    "S1-COL-G": "Bookings This Month: SUM(Opportunity.Amount) closed won this month. Time-filter immune.",
-    "S1-COL-H": "MTD Quota Attainment %: Bookings This Month / Quota This Month (computed). Time-filter immune.",
-    "S1-COL-I": "Open Pipeline (This Month): SUM(Opportunity.Amount) IsClosed=false, CloseDate=THIS_MONTH. Time-filter immune.",
-    "S1-COL-J": "Open Pipeline (Next Month): SUM(Opportunity.Amount) IsClosed=false, CloseDate=NEXT_MONTH. Time-filter immune.",
-    "S1-COL-K": "# Opportunities Created: COUNT(Opportunity.Id) in selected time period.",
-    "S1-COL-L": "Pipeline $ Created: SUM(Opportunity.Amount) by CreatedDate in selected period.",
-    "S1-COL-M": "Total Closed Won: SUM(Opportunity.Amount) StageName='Closed Won' in selected period.",
-    "S1-COL-N": "Total Closed Lost: SUM(Opportunity.Amount) StageName='Closed Lost' in selected period.",
-    "S2-COL-O": "Unique Email Recipients: COUNT_DISTINCT(Task.WhoId) emails sent by Sales Rep (not AM/SDR) to prospects.",
-    "S2-COL-P": "Unique Call Recipients: COUNT_DISTINCT(Task.WhoId) calls made by Sales Rep (not AM/SDR) to prospects.",
-    "S2-COL-Q": "Unique Voicemail Recipients: BLOCKED — voicemail field pending confirmation.",
-    "S2-COL-R": "Unique Accts w/ Foot Canvass: COUNT_DISTINCT(Event.WhatId) prospect meetings with Meeting_Specifics__c='Foot Canvass'.",
-    "S2-COL-S": "Unique Accts w/ Net New Mtgs: COUNT_DISTINCT(Event.WhatId) prospect meetings with Meeting_Specifics__c='Net New'.",
-    "S3-COL-T": "SDR Unique Emails: COUNT_DISTINCT(Task.WhoId) emails sent by SDRs linked to this AE via AEEmail__c.",
-    "S3-COL-U": "SDR Unique Calls: COUNT_DISTINCT(Task.WhoId) calls made by SDRs linked to this AE.",
-    "S3-COL-V": "SDR Unique Mtgs Scheduled: COUNT(Event.Id) net-new prospect meetings with Sales Rep as creator.",
-    "S3-COL-W": "SDR Unique Mtgs Held: COUNT(Event.Id) net-new prospect meetings created by SDR and owned by Sales Rep.",
-    "S4-COL-X": "CP Unique Emails: COUNT_DISTINCT(Task.WhoId) emails to channel partners. Excludes HubSpot, inbound, Gong, Cases.",
-    "S4-COL-Y": "CP Unique Calls: COUNT_DISTINCT(Task.WhoId) calls to channel partners. Same exclusions as emails.",
-    "S4-COL-Z": "CP Mtgs Scheduled: COUNT(Event.Id) channel partner meetings with status='Scheduled'.",
-    "S4-COL-AA": "CP Mtgs Held: COUNT(Event.Id) channel partner meetings with status LIKE 'Attended%'.",
-    "S6-COL-AE": "Self-Gen Opps: COUNT(Id) where AE created the opportunity themselves (CreatedById = OwnerId).",
-    "S6-COL-AF": "Self-Gen Pipeline $: SUM(Amount) where AE created the opportunity themselves.",
-    "S6-COL-AG": "SDR Opps: COUNT(Id) of AE split recipients where Opportunity Source Category = 'Self-Generated' AND Source Team = 'Sales Development'.",
-    "S6-COL-AH": "SDR Pipeline $: SUM(SplitAmount) of AE split recipients where Opportunity Source Category = 'Self-Generated' AND Source Team = 'Sales Development'.",
-    "S6-COL-AI": "CP Opps: COUNT(Id) where LeadSource indicates channel partner. Edit SOQL to match your org.",
-    "S6-COL-AJ": "CP Pipeline $: SUM(Amount) where LeadSource indicates channel partner. Edit SOQL to match your org.",
-    "S6-COL-AK": "Marketing Opps: BLOCKED — Source__c / LeadSource field values pending confirmation.",
-    "S6-COL-AL": "Marketing Pipeline $: BLOCKED — Source__c / LeadSource field values pending confirmation.",
-    "S5-COL-AB": "Mtgs from Events: BLOCKED — Source__c field values pending confirmation.",
-    "S5-COL-AC": "Mtgs from Inbound: BLOCKED — Source__c field values pending confirmation.",
-    "S5-COL-AD": "Mtgs from Other Marketing: BLOCKED — Source__c field values pending confirmation.",
-}
-
-
 def apply_custom_css():
     st.markdown("""
     <style>
@@ -215,7 +175,10 @@ def display_dashboard_table(df: pd.DataFrame):
         with st.expander(f"**{display_name}**", expanded=True):
             tooltip_lines = []
             for e in section_cols:
-                tip = TOOLTIPS.get(e.col_id, "")
+                if e.blocked:
+                    tip = "Pending — field mapping not yet confirmed for this org."
+                else:
+                    tip = e.description
                 if tip:
                     tooltip_lines.append(f"- **{e.display_name}:** {tip}")
             if tooltip_lines:
