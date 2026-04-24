@@ -71,13 +71,24 @@ def _ae_email_clause(p: dict) -> str:
 def _sdr_owner_clause(p: dict) -> str:
     """Build OwnerId IN (subquery) from AE's Assigned_SDR_Outbound__c — SDR(s) associated with the given AE.
     Used on Task/Event where the queried object has a direct OwnerId field."""
-    
+
     ae_id = p.get("ae_user_id", "")
     if not ae_id:
         return "OwnerId != null"
     # AE User has Assigned_SDR_Outbound__c pointing to SDR User(s); use those as owner IDs
     return (
         f"OwnerId IN (SELECT Assigned_SDR_Outbound__c FROM User WHERE Id = '{ae_id}'"
+        f" AND Assigned_SDR_Outbound__c != null)"
+    )
+
+
+def _sdr_created_by_clause(p: dict) -> str:
+    """CreatedById variant of the SDR filter — Event belongs to the AE but was created by the AE's SDR."""
+    ae_id = p.get("ae_user_id", "")
+    if not ae_id:
+        return "CreatedById != null"
+    return (
+        f"CreatedById IN (SELECT Assigned_SDR_Outbound__c FROM User WHERE Id = '{ae_id}'"
         f" AND Assigned_SDR_Outbound__c != null)"
     )
 
@@ -102,6 +113,7 @@ _CLAUSE_BUILDERS = {
     "{activity_owner_clause}": ("Activity Owner Clause", _activity_owner_clause),
     "{ae_email_clause}": ("AE Email Clause", _ae_email_clause),
     "{sdr_owner_clause}": ("SDR Owner Clause", _sdr_owner_clause),
+    "{sdr_created_by_clause}": ("SDR CreatedBy Clause", _sdr_created_by_clause),
     "{sdr_split_owner_clause}": ("SDR Split Owner Clause", _sdr_split_owner_clause),
 }
 
@@ -134,6 +146,7 @@ def build_query(entry: SOQLEntry, params: dict) -> str:
     activity_owner = _activity_owner_clause(params)
     ae_email = _ae_email_clause(params)
     sdr_owner = _sdr_owner_clause(params)
+    sdr_created_by = _sdr_created_by_clause(params)
     sdr_split_owner = _sdr_split_owner_clause(params)
     # Defaults for params that only some templates reference — use a well-formed
     # but never-matching ID so queries are syntactically valid when unresolved.
@@ -146,6 +159,7 @@ def build_query(entry: SOQLEntry, params: dict) -> str:
         activity_owner_clause=activity_owner,
         ae_email_clause=ae_email,
         sdr_owner_clause=sdr_owner,
+        sdr_created_by_clause=sdr_created_by,
         sdr_split_owner_clause=sdr_split_owner,
         **merged,
     )
@@ -506,7 +520,7 @@ S3_COL_V = SOQLEntry(
     col_id="S3-COL-V",
     display_name="SDR Unique Mtgs Scheduled",
     section="SDR Activity",
-    description="Count of net-new prospect meetings scheduled by SDRs (AE is the owner).",
+    description="Count of net-new prospect meetings scheduled by the AE's SDR (filtered via CreatedById).",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -516,8 +530,7 @@ WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Net New'
   AND Meeting_Status__c = 'Scheduled'
-  AND CreatedBy.UserRole.Name LIKE '%SDR%'
-  AND {sdr_owner_clause}
+  AND {sdr_created_by_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -527,7 +540,7 @@ S3_COL_W = SOQLEntry(
     col_id="S3-COL-W",
     display_name="SDR Unique Mtgs Held",
     section="SDR Activity",
-    description="Count of net-new prospect meetings held where meeting was SDR-created.",
+    description="Count of net-new prospect meetings held where the AE's SDR is the meeting creator (filtered via CreatedById).",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
@@ -537,8 +550,7 @@ WHERE RecordType.Name = 'Sales Event'
   AND Meeting_Type__c = 'Prospect Meeting'
   AND Meeting_Specifics__c = 'Net New'
   AND Meeting_Status__c LIKE 'Attended%'
-  AND CreatedBy.UserRole.Name LIKE '%SDR%'
-  AND {sdr_owner_clause}
+  AND {sdr_created_by_clause}
   AND ActivityDate >= {time_start_date}
   AND ActivityDate <= {time_end_date}
 """,
@@ -650,8 +662,8 @@ WHERE RecordType.Name = 'Partner Event'
 # SECTION 6 — Pipeline Generated  [S6-COL-AE through S6-COL-AL]
 # ============================================================
 # Breaks down pipeline creation by source: Self-Gen, SDR, Channel Partner, Marketing.
-# Self-Gen and SDR queries use {ae_user_id} directly (per-AE, not batchable).
-# CP queries use {owner_clause} + LeadSource (batchable). Marketing is BLOCKED.
+# Self-Gen queries use {ae_user_id} directly (per-AE, not batchable).
+# SDR and CP queries use {owner_clause} + source filters (batchable). Marketing is BLOCKED.
 
 S6_COL_AE = SOQLEntry(
     col_id="S6-COL-AE",
@@ -693,15 +705,16 @@ S6_COL_AG = SOQLEntry(
     col_id="S6-COL-AG",
     display_name="SDR Opps",
     section="SDR Activity",
-    description="Opportunity splits where the AE is a split recipient and the AE's SDR created the opp (Net New).",
+    description="Opportunity splits where the AE is a split recipient and the opp is Sales Development-sourced (Self-Generated, Net New).",
     aggregation="COUNT(Id)",
     time_filter=True,
     template="""
 SELECT COUNT(Id) total
 FROM OpportunitySplit
-WHERE {sdr_split_owner_clause}
+WHERE {owner_clause}
   AND Opportunity.Revenue_Type__c = 'Net New'
-  AND Opportunity.SDR__c != null
+  AND Opportunity.Opportunity_Source_Category__c = 'Self-Generated'
+  AND Opportunity.Opportunity_Source_Team__c = 'Sales Development'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
 """,
@@ -711,15 +724,16 @@ S6_COL_AH = SOQLEntry(
     col_id="S6-COL-AH",
     display_name="SDR Pipeline $",
     section="SDR Activity",
-    description="Split dollars from opportunities created by the AE's assigned SDR (Net New, split-credited).",
+    description="Split dollars on Sales Development-sourced opportunities where the AE is a split recipient (Self-Generated, Net New).",
     aggregation="SUM(SplitAmount)",
     time_filter=True,
     template="""
 SELECT SUM(SplitAmount) total
 FROM OpportunitySplit
-WHERE {sdr_split_owner_clause}
+WHERE {owner_clause}
   AND Opportunity.Revenue_Type__c = 'Net New'
-  AND Opportunity.SDR__c != null
+  AND Opportunity.Opportunity_Source_Category__c = 'Self-Generated'
+  AND Opportunity.Opportunity_Source_Team__c = 'Sales Development'
   AND Opportunity.CreatedDate >= {time_start}
   AND Opportunity.CreatedDate <= {time_end}
 """,
