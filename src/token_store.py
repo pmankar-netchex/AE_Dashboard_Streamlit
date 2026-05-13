@@ -1,4 +1,5 @@
 """Per-user server-side session/token storage."""
+from __future__ import annotations
 import json
 import logging
 import secrets

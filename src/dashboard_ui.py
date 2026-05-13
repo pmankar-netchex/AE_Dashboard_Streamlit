@@ -22,10 +22,18 @@ SECTION_DISPLAY_NAMES = {
 CURRENCY_COLS = {
     "S1-COL-C", "S1-COL-D", "S1-COL-F", "S1-COL-G",
     "S1-COL-I", "S1-COL-J", "S1-COL-L", "S1-COL-M", "S1-COL-N",
-    "S6-COL-AF", "S6-COL-AH", "S6-COL-AJ",
+    "S6-COL-AF", "S6-COL-AH", "S6-COL-AJ", "S6-COL-AL",
 }
 PERCENT_COLS = {"S1-COL-E", "S1-COL-H"}
 LOWER_IS_BETTER = {"S1-COL-N"}
+
+ALL_SOURCE_SUMMARY = [
+    ("Self Gen",  "S6-COL-AF", None),
+    ("SDR",       "S6-COL-AH", None),
+    ("Channel",   "S6-COL-AJ", None),
+    ("Marketing", "S6-COL-AL", None),
+]
+TOTAL_BOOKINGS_COL = "S1-COL-M"  # Total Closed Won (Period) — only period-based bookings query in production
 
 def apply_custom_css():
     st.markdown("""
@@ -116,6 +124,56 @@ def display_kpi_widgets(df: pd.DataFrame):
             numeric = pd.to_numeric(df[col_id], errors="coerce")
             val = numeric.mean() if is_avg else numeric.sum()
             row2[i].metric(COLUMN_BY_ID[col_id].display_name, formatter(val))
+
+
+def display_all_source_summary(df: pd.DataFrame):
+    if df.empty:
+        return
+
+    summary = pd.DataFrame()
+    summary["AE"] = df["AE Name"].values
+    summary["Manager"] = df.get("AE Manager", pd.Series([""] * len(df))).values
+
+    pipeline_cols_present = [c for _, c, _ in ALL_SOURCE_SUMMARY if c in df.columns]
+    if pipeline_cols_present:
+        numeric_pipe = df[pipeline_cols_present].apply(pd.to_numeric, errors="coerce")
+        summary["Total Pipeline (Period)"] = numeric_pipe.sum(axis=1, min_count=1).values
+    else:
+        summary["Total Pipeline (Period)"] = pd.NA
+
+    if TOTAL_BOOKINGS_COL in df.columns:
+        summary["Total Bookings (Period)"] = pd.to_numeric(
+            df[TOTAL_BOOKINGS_COL].values, errors="coerce"
+        )
+    else:
+        summary["Total Bookings (Period)"] = pd.NA
+
+    for label, pipeline_col, bookings_col in ALL_SOURCE_SUMMARY:
+        p_name = f"{label} Pipeline (Period)"
+        b_name = f"{label} Bookings (Period)"
+        if pipeline_col and pipeline_col in df.columns:
+            summary[p_name] = pd.to_numeric(df[pipeline_col].values, errors="coerce")
+        else:
+            summary[p_name] = pd.NA
+        if bookings_col and bookings_col in df.columns:
+            summary[b_name] = pd.to_numeric(df[bookings_col].values, errors="coerce")
+        else:
+            summary[b_name] = pd.NA
+
+    format_dict = {c: fmt_currency for c in summary.columns if c not in ("AE", "Manager")}
+    heatmap_cols = [c for c in summary.columns if c not in ("AE", "Manager")]
+
+    with st.expander("**All Source Summary**", expanded=True):
+        st.caption(
+            "Totals first, then split-credited Pipeline $ by source. "
+            "Bookings-by-source columns are placeholders — no source-attributed "
+            "closed-won query exists in production yet."
+        )
+        styler = summary.style.format(format_dict, na_rep="—")
+        for col_name in heatmap_cols:
+            if summary[col_name].notna().any():
+                styler = styler.apply(_light_heatmap, subset=[col_name])
+        st.dataframe(styler, use_container_width=True, hide_index=True)
 
 
 def display_dashboard_table(df: pd.DataFrame):
