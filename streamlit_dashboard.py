@@ -14,6 +14,12 @@ logging.basicConfig(
 
 import streamlit as st
 
+st.set_page_config(
+    page_title="AE Performance Dashboard",
+    page_icon="📊",
+    layout="wide",
+)
+
 from src.salesforce_oauth import (
     is_oauth_configured,
     get_authorization_url,
@@ -49,17 +55,13 @@ from src.token_store import (
 from src.dashboard_ui import (
     apply_custom_css,
     display_kpi_widgets,
+    display_all_source_summary,
     display_dashboard_table,
     display_charts,
     display_heatmap,
     render_fetch_status,
 )
 
-st.set_page_config(
-    page_title="AE Performance Dashboard",
-    page_icon="📊",
-    layout="wide",
-)
 apply_custom_css()
 
 _LEGACY_SF_TOKEN_FILE = Path.home() / ".salesforce_tokens" / "ae_dashboard.json"
@@ -257,12 +259,22 @@ def render_dashboard_tab(sf):
         st.session_state["dashboard_df"] = None
         st.session_state["fetch_ts"] = None
 
-    # Auto-refresh when filter params change (fixes period-dependent columns)
-    params_key = str(sorted(params.items()))
-    if st.session_state.get("last_params_key") != params_key:
+    filter_signature = (
+        params.get("ae_user_id"),
+        params.get("manager_name"),
+        params.get("time_start_date"),
+        params.get("time_end_date"),
+    )
+    if st.session_state.get("last_filter_signature") != filter_signature:
         st.session_state["dashboard_df"] = None
-        st.session_state["last_params_key"] = params_key
+        st.session_state["last_filter_signature"] = filter_signature
+        clear_query_failures()
 
+    st.caption(
+        f"Applied — Manager: **{params.get('manager_name') or 'All'}** · "
+        f"AE: **{params.get('ae_user_id') or 'All'}** · "
+        f"Period: **{params.get('time_start_date')} → {params.get('time_end_date')}**"
+    )
     should_refresh = render_fetch_status(st.session_state.get("fetch_ts"))
 
     if st.session_state["dashboard_df"] is None or should_refresh:
@@ -277,6 +289,8 @@ def render_dashboard_tab(sf):
     df = st.session_state["dashboard_df"]
 
     display_kpi_widgets(df)
+    st.divider()
+    display_all_source_summary(df)
     st.divider()
     display_dashboard_table(df)
     display_charts(df)
