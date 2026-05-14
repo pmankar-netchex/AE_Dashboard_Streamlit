@@ -1,56 +1,149 @@
+import {
+  type ColumnDef,
+  createColumnHelper,
+} from "@tanstack/react-table";
 import { useMemo } from "react";
 import type { AllSourceSummaryRow, AllSourceSummarySpec } from "@/types/dashboard";
-import { normalizeColumn } from "@/lib/heatmap";
-import { AENameCell } from "@/components/tables/AENameCell";
-import { HeatmapCell } from "@/components/tables/HeatmapCell";
+import { useFilters } from "@/hooks/useFilters";
+import { fmt } from "@/lib/formatters";
+import { lightHeatmapColor, normalizeColumn } from "@/lib/heatmap";
+import { DataTable } from "@/components/tables/DataTable";
+import { cn } from "@/lib/cn";
 
 interface Props {
   rows: AllSourceSummaryRow[];
   sources: AllSourceSummarySpec[];
 }
 
-interface NumericCol {
-  key: string;
-  label: string;
-  getValue: (row: AllSourceSummaryRow) => number | null;
+const helper = createColumnHelper<AllSourceSummaryRow>();
+
+function HeatedNumber({
+  value,
+  norm,
+}: {
+  value: number | null;
+  norm: number | null;
+}) {
+  return (
+    <span
+      className="block w-full rounded px-1.5 py-0.5 text-right tabular-nums"
+      style={{ backgroundColor: lightHeatmapColor(norm) }}
+    >
+      {fmt(value, "currency")}
+    </span>
+  );
 }
 
 export function AllSourceSummary({ rows, sources }: Props) {
-  const numericCols: NumericCol[] = useMemo(() => {
-    const cols: NumericCol[] = [
-      {
-        key: "total_pipeline",
-        label: "Total Pipeline (Period)",
-        getValue: (r) => r.total_pipeline,
-      },
-      {
-        key: "total_bookings",
-        label: "Total Bookings (Period)",
-        getValue: (r) => r.total_bookings,
-      },
-    ];
-    sources.forEach((s, idx) => {
-      cols.push({
-        key: `${s.label}-p`,
-        label: `${s.label} Pipeline`,
-        getValue: (r) => r.sources[idx]?.pipeline ?? null,
-      });
-      cols.push({
-        key: `${s.label}-b`,
-        label: `${s.label} Bookings`,
-        getValue: (r) => r.sources[idx]?.bookings ?? null,
-      });
-    });
-    return cols;
-  }, [sources]);
+  const { set } = useFilters();
 
   const norms = useMemo(() => {
-    const out: Record<string, (number | null)[]> = {};
-    for (const col of numericCols) {
-      out[col.key] = normalizeColumn(rows.map((r) => col.getValue(r)));
-    }
-    return out;
-  }, [numericCols, rows]);
+    const tp = normalizeColumn(rows.map((r) => r.total_pipeline));
+    const tb = normalizeColumn(rows.map((r) => r.total_bookings));
+    const perSource = sources.map((_, i) => ({
+      p: normalizeColumn(rows.map((r) => r.sources[i]?.pipeline ?? null)),
+      b: normalizeColumn(rows.map((r) => r.sources[i]?.bookings ?? null)),
+    }));
+    return { tp, tb, perSource };
+  }, [rows, sources]);
+
+  const idxByRow = useMemo(() => {
+    const m = new Map<string, number>();
+    rows.forEach((r, i) => m.set(r.ae_id || r.ae_name, i));
+    return m;
+  }, [rows]);
+
+  const columns = useMemo<ColumnDef<AllSourceSummaryRow, unknown>[]>(() => {
+    const sourceGroups = sources.map((s, i) =>
+      helper.group({
+        id: `src-${s.label}`,
+        header: () => <span className="text-foreground">{s.label}</span>,
+        columns: [
+          helper.accessor((r) => r.sources[i]?.pipeline ?? null, {
+            id: `${s.label}-p`,
+            header: "Pipeline",
+            cell: (c) => {
+              const rowIdx = idxByRow.get(c.row.original.ae_id || c.row.original.ae_name) ?? 0;
+              return (
+                <HeatedNumber value={c.getValue() as number | null} norm={norms.perSource[i].p[rowIdx]} />
+              );
+            },
+            sortingFn: numericSort,
+          }),
+          helper.accessor((r) => r.sources[i]?.bookings ?? null, {
+            id: `${s.label}-b`,
+            header: "Bookings",
+            cell: (c) => {
+              const rowIdx = idxByRow.get(c.row.original.ae_id || c.row.original.ae_name) ?? 0;
+              return (
+                <HeatedNumber value={c.getValue() as number | null} norm={norms.perSource[i].b[rowIdx]} />
+              );
+            },
+            sortingFn: numericSort,
+          }),
+        ],
+      }),
+    );
+
+    return [
+      helper.accessor("ae_name", {
+        id: "ae",
+        header: "AE",
+        cell: (c) => (
+          <button
+            type="button"
+            onClick={() => set({ aeDrillId: c.row.original.ae_id })}
+            className={cn(
+              "text-left font-medium",
+              c.row.original.ae_id
+                ? "hover:underline"
+                : "text-muted-foreground",
+            )}
+            disabled={!c.row.original.ae_id}
+            title={c.row.original.ae_id ? "Open AE drill-down" : "No AE id"}
+          >
+            {c.getValue() as string}
+          </button>
+        ),
+        enableColumnFilter: true,
+      }),
+      helper.accessor("ae_manager", {
+        id: "manager",
+        header: "Manager",
+        cell: (c) => <span className="text-muted-foreground">{c.getValue() as string}</span>,
+        enableColumnFilter: true,
+      }),
+      helper.group({
+        id: "totals",
+        header: () => <span className="text-foreground">Totals (Period)</span>,
+        columns: [
+          helper.accessor("total_pipeline", {
+            id: "total_pipeline",
+            header: "Pipeline",
+            cell: (c) => {
+              const rowIdx = idxByRow.get(c.row.original.ae_id || c.row.original.ae_name) ?? 0;
+              return (
+                <HeatedNumber value={c.getValue() as number | null} norm={norms.tp[rowIdx]} />
+              );
+            },
+            sortingFn: numericSort,
+          }),
+          helper.accessor("total_bookings", {
+            id: "total_bookings",
+            header: "Bookings",
+            cell: (c) => {
+              const rowIdx = idxByRow.get(c.row.original.ae_id || c.row.original.ae_name) ?? 0;
+              return (
+                <HeatedNumber value={c.getValue() as number | null} norm={norms.tb[rowIdx]} />
+              );
+            },
+            sortingFn: numericSort,
+          }),
+        ],
+      }),
+      ...sourceGroups,
+    ];
+  }, [sources, norms, idxByRow, set]);
 
   return (
     <section>
@@ -60,56 +153,24 @@ export function AllSourceSummary({ rows, sources }: Props) {
           Totals first, then split-credited Pipeline $ and Bookings $ by source.
         </p>
       </header>
-      <div className="overflow-auto rounded-lg border border-border">
-        <table className="min-w-full border-separate border-spacing-0">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="sticky left-0 z-10 bg-muted/50 px-2 py-2 text-left text-xs font-medium text-muted-foreground">
-                AE
-              </th>
-              <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground">
-                Manager
-              </th>
-              {numericCols.map((c) => (
-                <th
-                  key={c.key}
-                  className="whitespace-nowrap px-2 py-2 text-right text-xs font-medium text-muted-foreground"
-                >
-                  {c.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, rowIdx) => (
-              <tr key={row.ae_id} className="border-t border-border">
-                <AENameCell aeId={row.ae_id} name={row.ae_name} />
-                <td className="px-2 py-1.5 text-sm text-muted-foreground">
-                  {row.ae_manager}
-                </td>
-                {numericCols.map((col) => (
-                  <HeatmapCell
-                    key={col.key}
-                    value={col.getValue(row)}
-                    norm={norms[col.key]?.[rowIdx] ?? null}
-                    format="currency"
-                  />
-                ))}
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td
-                  colSpan={2 + numericCols.length}
-                  className="px-4 py-6 text-center text-sm text-muted-foreground"
-                >
-                  No AEs match the current filters.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={rows}
+        columns={columns}
+        emptyMessage="No AEs match the current filters."
+        enableGlobalSearch
+        enableColumnFilters
+        pageSizes={[10, 25, 50, 100]}
+        initialPageSize={25}
+        stickyFirstColumn
+      />
     </section>
   );
+}
+
+function numericSort(rowA: { getValue: (id: string) => unknown }, rowB: { getValue: (id: string) => unknown }, colId: string) {
+  const a = rowA.getValue(colId) as number | null;
+  const b = rowB.getValue(colId) as number | null;
+  if (a === null) return b === null ? 0 : 1;
+  if (b === null) return -1;
+  return a - b;
 }

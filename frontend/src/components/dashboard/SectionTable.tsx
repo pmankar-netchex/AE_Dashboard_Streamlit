@@ -1,10 +1,15 @@
-import { useState } from "react";
+import {
+  type ColumnDef,
+  createColumnHelper,
+} from "@tanstack/react-table";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { AERow, ColumnMeta } from "@/types/dashboard";
+import { DataTable } from "@/components/tables/DataTable";
+import { useFilters } from "@/hooks/useFilters";
 import { LOWER_IS_BETTER } from "@/lib/columns";
-import { normalizeColumn } from "@/lib/heatmap";
-import { AENameCell } from "@/components/tables/AENameCell";
-import { HeatmapCell } from "@/components/tables/HeatmapCell";
+import { fmt } from "@/lib/formatters";
+import { lightHeatmapColor, normalizeColumn } from "@/lib/heatmap";
 import { cn } from "@/lib/cn";
 
 interface Props {
@@ -14,18 +19,90 @@ interface Props {
   defaultOpen?: boolean;
 }
 
+const helper = createColumnHelper<AERow>();
+
 export function SectionTable({ section, columns, rows, defaultOpen }: Props) {
   const [open, setOpen] = useState(!!defaultOpen);
+  const { set } = useFilters();
+
   const numericCols = columns.filter((c) => !c.blocked);
 
-  const norms: Record<string, (number | null)[]> = {};
-  for (const col of numericCols) {
-    if (col.computed) continue;
-    norms[col.col_id] = normalizeColumn(
-      rows.map((r) => r.values[col.col_id]),
-      LOWER_IS_BETTER.has(col.col_id),
-    );
-  }
+  const norms = useMemo(() => {
+    const out: Record<string, (number | null)[]> = {};
+    for (const c of numericCols) {
+      if (c.computed) continue;
+      out[c.col_id] = normalizeColumn(
+        rows.map((r) => r.values[c.col_id]),
+        LOWER_IS_BETTER.has(c.col_id),
+      );
+    }
+    return out;
+  }, [numericCols, rows]);
+
+  const idxByRow = useMemo(() => {
+    const m = new Map<string, number>();
+    rows.forEach((r, i) => m.set(r.ae_id || r.ae_name, i));
+    return m;
+  }, [rows]);
+
+  const tableColumns = useMemo<ColumnDef<AERow, unknown>[]>(() => {
+    const defs: ColumnDef<AERow, unknown>[] = [
+      helper.accessor("ae_name", {
+        id: "ae",
+        header: "AE Name",
+        cell: (c) => (
+          <button
+            type="button"
+            onClick={() => set({ aeDrillId: c.row.original.ae_id })}
+            className={cn(
+              "text-left font-medium",
+              c.row.original.ae_id
+                ? "hover:underline"
+                : "text-muted-foreground",
+            )}
+            disabled={!c.row.original.ae_id}
+          >
+            {c.getValue() as string}
+          </button>
+        ),
+        enableColumnFilter: true,
+      }),
+      helper.accessor("ae_manager", {
+        id: "manager",
+        header: "AE Manager",
+        cell: (c) => <span className="text-muted-foreground">{c.getValue() as string}</span>,
+        enableColumnFilter: true,
+      }),
+    ];
+
+    for (const col of numericCols) {
+      defs.push(
+        helper.accessor((r) => r.values[col.col_id] ?? null, {
+          id: col.col_id,
+          header: () => (
+            <span title={col.description}>{col.display_name}</span>
+          ),
+          cell: (c) => {
+            if (col.blocked) {
+              return <span className="text-xs italic text-muted-foreground/60">Pending</span>;
+            }
+            const rowIdx = idxByRow.get(c.row.original.ae_id || c.row.original.ae_name) ?? 0;
+            const norm = norms[col.col_id]?.[rowIdx] ?? null;
+            return (
+              <span
+                className="block w-full rounded px-1.5 py-0.5 text-right tabular-nums"
+                style={{ backgroundColor: lightHeatmapColor(norm) }}
+              >
+                {fmt(c.getValue() as number | null, col.format)}
+              </span>
+            );
+          },
+          sortingFn: numericSort,
+        }),
+      );
+    }
+    return defs;
+  }, [numericCols, norms, idxByRow, set]);
 
   return (
     <section className="rounded-lg border border-border">
@@ -44,73 +121,27 @@ export function SectionTable({ section, columns, rows, defaultOpen }: Props) {
         </span>
       </button>
       {open && (
-        <div className="overflow-auto border-t border-border">
-          <table className="min-w-full border-separate border-spacing-0">
-            <thead className="bg-muted/30">
-              <tr>
-                <th className="sticky left-0 z-10 bg-muted/30 px-2 py-2 text-left text-xs font-medium text-muted-foreground">
-                  AE Name
-                </th>
-                <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground">
-                  AE Manager
-                </th>
-                {numericCols.map((c) => (
-                  <th
-                    key={c.col_id}
-                    className={cn(
-                      "whitespace-nowrap px-2 py-2 text-right text-xs font-medium",
-                      c.blocked ? "text-muted-foreground/60" : "text-muted-foreground",
-                    )}
-                    title={c.description}
-                  >
-                    {c.display_name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, rowIdx) => (
-                <tr key={row.ae_id} className="border-t border-border">
-                  <AENameCell aeId={row.ae_id} name={row.ae_name} />
-                  <td className="px-2 py-1.5 text-sm text-muted-foreground">
-                    {row.ae_manager}
-                  </td>
-                  {numericCols.map((c) => {
-                    if (c.blocked) {
-                      return (
-                        <td
-                          key={c.col_id}
-                          className="px-2 py-1.5 text-right text-xs italic text-muted-foreground/60"
-                        >
-                          Pending
-                        </td>
-                      );
-                    }
-                    return (
-                      <HeatmapCell
-                        key={c.col_id}
-                        value={row.values[c.col_id]}
-                        norm={norms[c.col_id]?.[rowIdx] ?? null}
-                        format={c.format}
-                      />
-                    );
-                  })}
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={2 + numericCols.length}
-                    className="px-4 py-6 text-center text-sm text-muted-foreground"
-                  >
-                    No data.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="border-t border-border p-3">
+          <DataTable
+            data={rows}
+            columns={tableColumns}
+            emptyMessage="No data."
+            enableGlobalSearch
+            enableColumnFilters={false}
+            pageSizes={[10, 25, 50, 100]}
+            initialPageSize={25}
+            stickyFirstColumn
+          />
         </div>
       )}
     </section>
   );
+}
+
+function numericSort(rowA: { getValue: (id: string) => unknown }, rowB: { getValue: (id: string) => unknown }, colId: string) {
+  const a = rowA.getValue(colId) as number | null;
+  const b = rowB.getValue(colId) as number | null;
+  if (a === null) return b === null ? 0 : 1;
+  if (b === null) return -1;
+  return a - b;
 }

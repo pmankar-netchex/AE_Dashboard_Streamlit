@@ -6,6 +6,9 @@ import {
 } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { DashboardRoute } from "@/pages/DashboardRoute";
+import { DashboardChartsRoute } from "@/pages/DashboardChartsRoute";
+import { DashboardHeatmapRoute } from "@/pages/DashboardHeatmapRoute";
+import { DashboardSummaryRoute } from "@/pages/DashboardSummaryRoute";
 import type { FilterSearch } from "@/lib/filterParams";
 
 const rootRoute = createRootRoute({
@@ -38,9 +41,32 @@ const dashboardRoute = createRoute({
   }),
 });
 
-// Lazy-loaded route components — keep the dashboard hot path small.
-// React.lazy isn't usable directly with TanStack Router, so we use the
-// route's `component` option with a lazy-imported wrapper.
+const dashboardIndexRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: "/",
+  beforeLoad: () => {
+    throw redirect({ to: "/dashboard/summary" });
+  },
+});
+
+const dashboardSummaryRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: "summary",
+  component: DashboardSummaryRoute,
+});
+
+const dashboardChartsRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: "charts",
+  component: DashboardChartsRoute,
+});
+
+const dashboardHeatmapRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: "heatmap",
+  component: DashboardHeatmapRoute,
+});
+
 const schedulesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/schedules",
@@ -83,7 +109,12 @@ const auditRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  dashboardRoute,
+  dashboardRoute.addChildren([
+    dashboardIndexRoute,
+    dashboardSummaryRoute,
+    dashboardChartsRoute,
+    dashboardHeatmapRoute,
+  ]),
   schedulesRoute,
   configRoute.addChildren([
     configIndexRoute,

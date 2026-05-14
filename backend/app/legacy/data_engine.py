@@ -332,7 +332,12 @@ def build_dashboard_dataframe(sf, params: dict, overrides: dict | None = None) -
     rows = []
     for ae in ae_list:
         aid = ae["Id"]
-        row = {"AE Name": ae["Name"], "AE Email": ae["Email"], "AE Manager": ae.get("Manager", "")}
+        row = {
+            "AE Id": aid,
+            "AE Name": ae["Name"],
+            "AE Email": ae["Email"],
+            "AE Manager": ae.get("Manager", ""),
+        }
         for entry in ALL_COLUMNS:
             row[entry.col_id] = col_results.get(entry.col_id, {}).get(aid)
         c = row.get("S1-COL-C") or 0
