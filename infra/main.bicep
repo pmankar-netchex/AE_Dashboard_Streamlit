@@ -1,16 +1,19 @@
-// Deploy into an EXISTING resource group (targetScope = resourceGroup).
-// One-time: az group create (if needed), then az deployment group create ...
+// Composition root for the overhauled AE Dashboard infrastructure.
+//
+// Deploys: Log Analytics → Container Apps Environment → ACR → Storage (with
+// tables) → Key Vault → API Container App (internal) → UI Container App
+// (external, optional Easy Auth) → role assignments.
 
 targetScope = 'resourceGroup'
 
-@description('Azure region for resources. Defaults to the resource group location.')
+@description('Azure region.')
 param location string = resourceGroup().location
 
-@description('Short prefix for resource names (lowercase letters, digits, hyphens). Keep short so the Container App name stays within limits.')
-@maxLength(20)
+@description('Short prefix for resource names.')
+@maxLength(15)
 param appNamePrefix string = 'aedash'
 
-@description('Optional ACR name (alphanumeric only, 5–50 chars, globally unique). Leave empty to auto-generate from the resource group.')
+@description('Optional ACR name override.')
 param acrName string = ''
 
 @allowed([
@@ -20,140 +23,166 @@ param acrName string = ''
 ])
 param acrSku string = 'Basic'
 
-@description('Minimum replicas. Default 1 avoids scale-to-zero and Streamlit cold starts. Set to 0 to allow scale-to-zero.')
-@minValue(0)
-@maxValue(30)
-param minReplicas int = 1
+@description('Optional Key Vault name (3–24 chars, globally unique).')
+param keyVaultName string = ''
 
-@minValue(1)
-@maxValue(30)
-param maxReplicas int = 3
+@description('Optional storage account name (3–24 chars, alphanumeric).')
+param storageAccountName string = ''
 
-@description('CPU per replica (e.g. 0.25, 0.5, 0.75, 1.0). Must match a valid Consumption-plan combination with memory.')
-param containerCpu string = '0.5'
+@description('Entra App Registration client ID for Easy Auth on UI. Leave empty to disable Easy Auth (first deploy before app registration exists).')
+param entraClientId string = ''
 
-@description('Memory per replica (e.g. 1.0Gi). Must match a valid Consumption-plan combination with CPU.')
-param containerMemory string = '1.0Gi'
+@description('Sender email for SendGrid.')
+param sendgridFromEmail string = 'dashboard@example.com'
 
-@description('Public image used only for the first revision until you push a real image (e.g. deploy_containerapp_local.sh) and update the app.')
+@description('Comma-separated bootstrap admin emails.')
+param bootstrapAdminEmails string = ''
+
+@description('Salesforce login URL (e.g. https://netchex.my.salesforce.com).')
+param sfLoginUrl string = 'https://login.salesforce.com'
+
+@description('Scheduler timezone.')
+param schedulerTz string = 'America/Chicago'
+
+@description('Initial container image to deploy for both apps (used until you push real images).')
 param initialContainerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
-@description('Image repository name inside ACR (must match scripts/deploy_containerapp_local.sh default ae-dashboard).')
-param containerImageRepository string = 'ae-dashboard'
+// ----- Secret inputs (pass at deploy time, e.g. via az deployment ... --parameters) -----
+
+@secure()
+@description('Salesforce Connected App client_id (client-credentials flow).')
+param sfClientId string = ''
+
+@secure()
+@description('Salesforce Connected App client_secret.')
+param sfClientSecret string = ''
+
+@secure()
+@description('SendGrid API key.')
+param sendgridApiKey string = ''
+
+@secure()
+@description('Internal API key shared between UI and API for defense-in-depth.')
+param internalApiKey string = ''
+
+// ----- Derived names -----
 
 var logAnalyticsName = '${appNamePrefix}-law'
 var containerEnvName = '${appNamePrefix}-cae'
-var containerAppName = '${appNamePrefix}-app'
+var apiAppName = '${appNamePrefix}-api'
+var uiAppName = '${appNamePrefix}-ui'
 
-var sanitizedAcrInput = replace(replace(toLower(acrName), '-', ''), '_', '')
+var sanitizedAcr = replace(replace(toLower(acrName), '-', ''), '_', '')
 var generatedAcrName = take(replace(toLower('acr${uniqueString(resourceGroup().id, appNamePrefix)}'), '-', ''), 50)
-var effectiveAcrName = empty(acrName) ? generatedAcrName : sanitizedAcrInput
+var effectiveAcrName = empty(acrName) ? generatedAcrName : sanitizedAcr
 
-resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
-  name: logAnalyticsName
-  location: location
-  properties: {
-    sku: {
-      name: 'PerGB2018'
-    }
-    retentionInDays: 30
+var generatedKvName = take(replace(toLower('${appNamePrefix}kv${uniqueString(resourceGroup().id, appNamePrefix)}'), '-', ''), 24)
+var effectiveKvName = empty(keyVaultName) ? generatedKvName : keyVaultName
+
+var generatedStorageName = take(replace(toLower('${appNamePrefix}st${uniqueString(resourceGroup().id, appNamePrefix)}'), '-', ''), 24)
+var effectiveStorageName = empty(storageAccountName) ? generatedStorageName : toLower(storageAccountName)
+
+// ----- Modules -----
+
+module logAnalytics 'modules/logAnalytics.bicep' = {
+  name: 'logAnalytics'
+  params: {
+    location: location
+    name: logAnalyticsName
   }
 }
 
-resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
-  name: containerEnvName
-  location: location
-  properties: {
-    workloadProfiles: [
-      {
-        name: 'Consumption'
-        workloadProfileType: 'Consumption'
-      }
+module containerEnv 'modules/containerEnv.bicep' = {
+  name: 'containerEnv'
+  params: {
+    location: location
+    name: containerEnvName
+    logAnalyticsCustomerId: logAnalytics.outputs.customerId
+    logAnalyticsSharedKey: logAnalytics.outputs.primarySharedKey
+  }
+}
+
+module acr 'modules/acr.bicep' = {
+  name: 'acr'
+  params: {
+    location: location
+    name: effectiveAcrName
+    sku: acrSku
+  }
+}
+
+module storage 'modules/storage.bicep' = {
+  name: 'storage'
+  params: {
+    location: location
+    name: effectiveStorageName
+  }
+}
+
+module keyVault 'modules/keyVault.bicep' = {
+  name: 'keyVault'
+  params: {
+    location: location
+    name: effectiveKvName
+  }
+}
+
+module apiApp 'modules/containerApp-api.bicep' = {
+  name: 'apiApp'
+  params: {
+    location: location
+    name: apiAppName
+    managedEnvironmentId: containerEnv.outputs.id
+    acrLoginServer: acr.outputs.loginServer
+    acrUsername: acr.outputs.adminUsername
+    acrPassword: acr.outputs.adminPassword
+    image: initialContainerImage
+    storageConnectionString: storage.outputs.primaryConnectionString
+    sfClientId: sfClientId
+    sfClientSecret: sfClientSecret
+    sfLoginUrl: sfLoginUrl
+    sendgridApiKey: sendgridApiKey
+    sendgridFromEmail: sendgridFromEmail
+    internalApiKey: internalApiKey
+    bootstrapAdminEmails: bootstrapAdminEmails
+    schedulerTz: schedulerTz
+  }
+}
+
+module uiApp 'modules/containerApp-ui.bicep' = {
+  name: 'uiApp'
+  params: {
+    location: location
+    name: uiAppName
+    managedEnvironmentId: containerEnv.outputs.id
+    acrLoginServer: acr.outputs.loginServer
+    acrUsername: acr.outputs.adminUsername
+    acrPassword: acr.outputs.adminPassword
+    image: initialContainerImage
+    apiHost: apiApp.outputs.fqdn
+    internalApiKey: internalApiKey
+    entraClientId: entraClientId
+  }
+}
+
+module roles 'modules/roleAssignments.bicep' = {
+  name: 'roles'
+  params: {
+    keyVaultName: keyVault.outputs.name
+    storageAccountName: storage.outputs.name
+    principalIds: [
+      apiApp.outputs.principalId
+      uiApp.outputs.principalId
     ]
-    appLogsConfiguration: {
-      destination: 'log-analytics'
-      logAnalyticsConfiguration: {
-        customerId: logAnalyticsWorkspace.properties.customerId
-        sharedKey: logAnalyticsWorkspace.listKeys().primarySharedKey
-      }
-    }
   }
 }
 
-resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
-  name: effectiveAcrName
-  location: location
-  sku: {
-    name: acrSku
-  }
-  properties: {
-    adminUserEnabled: true
-  }
-}
+// ----- Outputs -----
 
-// AcrPull via role assignment needs Microsoft.Authorization/roleAssignments/write (Owner or User Access
-// Administrator). Contributor cannot create role assignments. ACR admin + secret works with Contributor.
-var acrCreds = acr.listCredentials()
-
-resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: containerAppName
-  location: location
-  properties: {
-    managedEnvironmentId: containerAppsEnvironment.id
-    configuration: {
-      secrets: [
-        {
-          name: 'acr-password'
-          value: acrCreds.passwords[0].value
-        }
-      ]
-      ingress: {
-        external: true
-        // Sample image listens on 80; local deploy script sets target port 8501 after the real image is deployed.
-        targetPort: 80
-        transport: 'auto'
-        stickySessions: {
-          affinity: 'sticky'
-        }
-      }
-      registries: [
-        {
-          server: acr.properties.loginServer
-          username: acrCreds.username
-          passwordSecretRef: 'acr-password'
-        }
-      ]
-    }
-    template: {
-      scale: {
-        minReplicas: minReplicas
-        maxReplicas: maxReplicas
-      }
-      containers: [
-        {
-          name: 'ae-dashboard'
-          image: initialContainerImage
-          env: [
-            {
-              name: 'PORT'
-              value: '8501'
-            }
-          ]
-          resources: {
-            cpu: json(containerCpu)
-            memory: containerMemory
-          }
-        }
-      ]
-    }
-  }
-}
-
-output containerAppName string = containerApp.name
-output containerAppFqdn string = containerApp.properties.configuration.ingress.fqdn
-output acrName string = acr.name
-output acrLoginServer string = acr.properties.loginServer
-output logAnalyticsWorkspaceName string = logAnalyticsWorkspace.name
-output containerAppsEnvironmentName string = containerAppsEnvironment.name
-output acrImageRepository string = containerImageRepository
-output containerImageRepositoryUri string = '${acr.properties.loginServer}/${containerImageRepository}'
+output apiAppName string = apiApp.outputs.name
+output apiAppFqdn string = apiApp.outputs.fqdn
+output uiAppName string = uiApp.outputs.name
+output uiAppFqdn string = uiApp.outputs.fqdn
+output acrLoginServer string = acr.outputs.loginServer
+output storageAccountName string = storage.outputs.name
+output keyVaultName string = keyVault.outputs.name
