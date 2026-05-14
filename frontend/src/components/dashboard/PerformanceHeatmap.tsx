@@ -1,5 +1,5 @@
 import type { AERow, ColumnMeta } from "@/types/dashboard";
-import { rdylgnFor } from "@/lib/heatmap";
+import { rdylgnFor, textOnColor } from "@/lib/heatmap";
 import { fmt } from "@/lib/formatters";
 import { LOWER_IS_BETTER } from "@/lib/columns";
 import { InfoTooltip } from "@/components/ui/InfoTooltip";
@@ -104,10 +104,7 @@ function FragmentRow({
               className="cursor-help px-1 py-1.5 text-center text-[10px] tabular-nums"
               style={{
                 backgroundColor: rdylgnFor(norm),
-                color:
-                  norm == null || norm < 0.6
-                    ? "rgba(255,255,255,0.95)"
-                    : "rgba(0,0,0,0.85)",
+                color: textOnColor(rdylgnFor(norm)),
               }}
             >
               {fmt(v, c.format)}

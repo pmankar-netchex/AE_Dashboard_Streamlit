@@ -15,6 +15,7 @@ import {
   Users2,
   Zap,
 } from "lucide-react";
+import { Logo } from "./Logo";
 import { useUiStore } from "@/stores/uiStore";
 import { SECTION_DEFS } from "@/lib/sections";
 import { cn } from "@/lib/cn";
@@ -71,16 +72,28 @@ export function SideNav() {
           collapsed ? "justify-center" : "justify-between px-3",
         )}
       >
-        {!collapsed && <span className="text-sm font-semibold">AE Dashboard</span>}
+        <Logo iconOnly={collapsed} size={collapsed ? 28 : 28} />
+        {!collapsed && (
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label="Collapse sidebar"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+      {collapsed && (
         <button
           type="button"
           onClick={toggle}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label="Expand sidebar"
+          className="mt-1 self-center rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          <ChevronRight className="h-4 w-4" />
         </button>
-      </div>
+      )}
       <nav className="flex-1 overflow-y-auto px-2 py-2">
         {TOP_NAV.map(({ to, label, Icon }) => {
           const active =

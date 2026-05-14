@@ -9,7 +9,11 @@ import { InfoTooltip } from "@/components/ui/InfoTooltip";
 import { useFilters } from "@/hooks/useFilters";
 import { LOWER_IS_BETTER } from "@/lib/columns";
 import { fmt } from "@/lib/formatters";
-import { lightHeatmapColor, normalizeColumn } from "@/lib/heatmap";
+import {
+  edgeMarkerColor,
+  lightHeatmapColor,
+  normalizeColumn,
+} from "@/lib/heatmap";
 import { cn } from "@/lib/cn";
 
 interface Props {
@@ -95,8 +99,11 @@ export function SectionTable({ section, columns, rows, showHeader = true }: Prop
             const norm = norms[col.col_id]?.[rowIdx] ?? null;
             return (
               <span
-                className="block w-full rounded px-1.5 py-0.5 text-right tabular-nums"
-                style={{ backgroundColor: lightHeatmapColor(norm) }}
+                className="block w-full rounded border-l-[3px] px-1.5 py-0.5 text-right tabular-nums"
+                style={{
+                  backgroundColor: lightHeatmapColor(norm),
+                  borderLeftColor: edgeMarkerColor(norm),
+                }}
               >
                 {fmt(c.getValue() as number | null, col.format)}
               </span>

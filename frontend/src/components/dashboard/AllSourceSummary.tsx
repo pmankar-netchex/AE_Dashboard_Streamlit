@@ -10,7 +10,11 @@ import type {
 } from "@/types/dashboard";
 import { useFilters } from "@/hooks/useFilters";
 import { fmt } from "@/lib/formatters";
-import { lightHeatmapColor, normalizeColumn } from "@/lib/heatmap";
+import {
+  edgeMarkerColor,
+  lightHeatmapColor,
+  normalizeColumn,
+} from "@/lib/heatmap";
 import { DataTable } from "@/components/tables/DataTable";
 import { InfoTooltip } from "@/components/ui/InfoTooltip";
 import { cn } from "@/lib/cn";
@@ -52,8 +56,11 @@ function HeatedNumber({
 }) {
   return (
     <span
-      className="block w-full rounded px-1.5 py-0.5 text-right tabular-nums"
-      style={{ backgroundColor: lightHeatmapColor(norm) }}
+      className="block w-full rounded border-l-[3px] px-1.5 py-0.5 text-right tabular-nums"
+      style={{
+        backgroundColor: lightHeatmapColor(norm),
+        borderLeftColor: edgeMarkerColor(norm),
+      }}
     >
       {fmt(value, "currency")}
     </span>

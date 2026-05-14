@@ -1,10 +1,11 @@
 import { useMe } from "@/hooks/useMe";
+import { Logo } from "./Logo";
 
 export function TopBar() {
   const { data: me, isLoading } = useMe();
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur">
-      <div className="text-sm text-muted-foreground">AE Performance</div>
+      <Logo size={26} />
       <div className="flex items-center gap-3 text-sm">
         {isLoading ? (
           <span className="text-muted-foreground">…</span>
