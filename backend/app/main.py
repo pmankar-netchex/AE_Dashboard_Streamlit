@@ -14,6 +14,12 @@ from app.routers import health, me
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
+    # Provision storage + seed bootstrap admins (no-op when storage unconfigured)
+    from app.config import get_settings
+    from app.storage.migrations import bootstrap_admins, ensure_tables
+
+    ensure_tables()
+    bootstrap_admins(get_settings().bootstrap_admin_list)
     yield
 
 
