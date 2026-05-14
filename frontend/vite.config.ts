@@ -39,12 +39,15 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 5173,
     proxy: {
+      // VITE_API_PROXY_TARGET lets docker-compose override to the API
+      // container hostname; default forces IPv4 to avoid Docker Desktop
+      // grabbing port 8000 over IPv6 on the host.
       "/api": {
-        target: "http://localhost:8000",
+        target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8000",
         changeOrigin: true,
       },
       "/healthz": {
-        target: "http://localhost:8000",
+        target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8000",
         changeOrigin: true,
       },
     },

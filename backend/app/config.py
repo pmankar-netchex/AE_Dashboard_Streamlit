@@ -3,12 +3,17 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # Look for .env in backend/ first (Docker layout), then repo root (dev layout).
+    model_config = SettingsConfigDict(
+        env_file=(".env", "../.env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     env: Literal["dev", "prod"] = Field(default="dev", validation_alias="ENV")
 
@@ -19,11 +24,19 @@ class Settings(BaseSettings):
     # Bootstrap admins (comma-separated) seeded into users table on startup
     bootstrap_admin_emails: str = Field(default="", validation_alias="BOOTSTRAP_ADMIN_EMAILS")
 
-    # Salesforce (client-credentials)
-    sf_client_id: str = Field(default="", validation_alias="SF_CLIENT_ID")
-    sf_client_secret: str = Field(default="", validation_alias="SF_CLIENT_SECRET")
+    # Salesforce (client-credentials). Accept the legacy SALESFORCE_* names
+    # too so an existing .env from the Streamlit days works without edits.
+    sf_client_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("SF_CLIENT_ID", "SALESFORCE_CLIENT_ID"),
+    )
+    sf_client_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices("SF_CLIENT_SECRET", "SALESFORCE_CLIENT_SECRET"),
+    )
     sf_login_url: str = Field(
-        default="https://login.salesforce.com", validation_alias="SF_LOGIN_URL"
+        default="https://login.salesforce.com",
+        validation_alias=AliasChoices("SF_LOGIN_URL", "SALESFORCE_LOGIN_URL"),
     )
     sf_api_version: str = Field(default="v60.0", validation_alias="SF_API_VERSION")
 

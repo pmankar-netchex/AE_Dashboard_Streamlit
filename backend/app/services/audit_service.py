@@ -62,7 +62,9 @@ class AuditService:
                 {
                     "PartitionKey": _PARTITION,
                     "RowKey": _rowkey(now),
-                    "Timestamp": iso,
+                    # Avoid the reserved 'Timestamp' property name — store our
+                    # ISO string under EventTimestamp instead.
+                    "EventTimestamp": iso,
                     "Actor": actor or "",
                     "Entity": entity,
                     "Action": action,
@@ -101,36 +103,48 @@ class AuditService:
             )
             return slice_, next_cursor
 
-        # Azure path
+        # Azure path. Rows are stored with reverse-epoch RowKeys, so a plain
+        # entity scan returns them newest-first. We fetch up to page_size+1 to
+        # detect whether more pages exist and synthesize a row-key cursor.
         filter_parts = [f"PartitionKey eq '{_PARTITION}'"]
         if entity:
             filter_parts.append(f"Entity eq '{entity}'")
         if actor:
             filter_parts.append(f"Actor eq '{actor}'")
+        if cursor:
+            # cursor is the last seen RowKey — fetch entries greater than it.
+            filter_parts.append(f"RowKey gt '{cursor}'")
         filter_expr = " and ".join(filter_parts)
         try:
-            iterator = client.query_entities(
-                filter_expr,
-                results_per_page=page_size,
-            )
-            page = next(iterator.by_page(continuation_token=cursor or None))
-            entities = list(page)
-            next_cursor = iterator.continuation_token
-            events = [
-                AuditEvent(
-                    timestamp=str(e.get("Timestamp") or ""),
-                    actor=str(e.get("Actor") or ""),
-                    entity=str(e.get("Entity") or ""),
-                    action=str(e.get("Action") or ""),
-                    target=str(e.get("Target") or ""),
-                    details=_safe_json(e.get("Details")),
-                )
-                for e in entities
-            ]
+            rows = []
+            for entity_row in client.query_entities(filter_expr):
+                rows.append(entity_row)
+                if len(rows) > page_size:
+                    break
+            has_more = len(rows) > page_size
+            visible = rows[:page_size]
+            events = [_row_to_event(e) for e in visible]
+            next_cursor = visible[-1]["RowKey"] if has_more and visible else None
             return events, next_cursor
         except Exception:
             logger.exception("audit list failed")
             return [], None
+
+
+def _row_to_event(e) -> AuditEvent:
+    d = dict(e)
+    # Prefer our own EventTimestamp, fall back to the system Timestamp
+    raw_ts = d.get("EventTimestamp") or d.get("Timestamp") or ""
+    if hasattr(raw_ts, "isoformat"):
+        raw_ts = raw_ts.isoformat()
+    return AuditEvent(
+        timestamp=str(raw_ts),
+        actor=str(d.get("Actor") or ""),
+        entity=str(d.get("Entity") or ""),
+        action=str(d.get("Action") or ""),
+        target=str(d.get("Target") or ""),
+        details=_safe_json(d.get("Details")),
+    )
 
 
 def _safe_json(raw) -> dict:
