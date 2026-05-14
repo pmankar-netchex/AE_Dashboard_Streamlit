@@ -1,5 +1,5 @@
 import type { AERow, ColumnMeta } from "@/types/dashboard";
-import { rdylgnFor, textOnColor } from "@/lib/heatmap";
+import { rdylgnFor } from "@/lib/heatmap";
 import { fmt } from "@/lib/formatters";
 import { LOWER_IS_BETTER } from "@/lib/columns";
 import { InfoTooltip } from "@/components/ui/InfoTooltip";
@@ -34,17 +34,17 @@ export function PerformanceHeatmap({ rows, columns }: Props) {
       <header className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-medium">Performance Heatmap</h3>
         <p className="text-xs text-muted-foreground">
-          Per-column normalized; red→yellow→green. Hover a column header for the full name.
+          Per-column normalized; red→yellow→green. Hover a cell for the AE, column, and value.
         </p>
       </header>
       <div className="overflow-x-auto">
         <div
           className="grid"
           style={{
-            gridTemplateColumns: `200px repeat(${numericCols.length}, minmax(72px, 1fr))`,
+            gridTemplateColumns: `200px repeat(${numericCols.length}, minmax(40px, 1fr))`,
           }}
         >
-          <div className="sticky left-0 z-10 bg-background px-2 py-1.5 text-xs font-medium text-muted-foreground">
+          <div className="sticky left-0 z-10 bg-background px-2 py-2 text-xs font-medium text-muted-foreground">
             AE
           </div>
           {numericCols.map((c) => (
@@ -54,7 +54,7 @@ export function PerformanceHeatmap({ rows, columns }: Props) {
               description={c.description || c.aggregation || c.col_id}
               side="bottom"
             >
-              <div className="cursor-help truncate px-1 py-1.5 text-center text-[10px] font-medium text-muted-foreground">
+              <div className="cursor-help truncate px-1 py-2 text-center text-[10px] font-medium text-muted-foreground">
                 {abbreviate(c.display_name)}
               </div>
             </InfoTooltip>
@@ -80,7 +80,7 @@ function FragmentRow({
   return (
     <>
       <div
-        className="sticky left-0 z-10 truncate bg-background px-2 py-1.5 text-xs"
+        className="sticky left-0 z-10 truncate bg-background px-2 py-2 text-xs"
         title={row.ae_name}
       >
         {row.ae_name}
@@ -101,14 +101,10 @@ function FragmentRow({
             side="top"
           >
             <div
-              className="cursor-help px-1 py-1.5 text-center text-[10px] tabular-nums"
-              style={{
-                backgroundColor: rdylgnFor(norm),
-                color: textOnColor(rdylgnFor(norm)),
-              }}
-            >
-              {fmt(v, c.format)}
-            </div>
+              className="h-7 cursor-help border border-transparent transition-[border-color,box-shadow] hover:border-foreground/70 hover:shadow-[0_0_0_1px_rgba(0,0,0,0.05)]"
+              style={{ backgroundColor: rdylgnFor(norm) }}
+              aria-label={`${row.ae_name} — ${c.display_name}: ${fmt(v, c.format)}`}
+            />
           </InfoTooltip>
         );
       })}
