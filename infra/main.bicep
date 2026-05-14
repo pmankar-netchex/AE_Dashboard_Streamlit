@@ -47,6 +47,9 @@ param schedulerTz string = 'America/Chicago'
 @description('Initial container image to deploy for both apps (used until you push real images).')
 param initialContainerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
+@description('Whether to create RBAC role assignments granting the Container Apps managed identities access to KV + Storage. Requires the deployer to have User Access Administrator/Owner on those resources. Safe to leave false when all secrets are passed inline.')
+param createRoleAssignments bool = false
+
 // ----- Secret inputs (pass at deploy time, e.g. via az deployment ... --parameters) -----
 
 @secure()
@@ -170,7 +173,7 @@ module uiApp 'modules/containerApp-ui.bicep' = {
   }
 }
 
-module roles 'modules/roleAssignments.bicep' = {
+module roles 'modules/roleAssignments.bicep' = if (createRoleAssignments) {
   name: 'roles'
   params: {
     keyVaultName: keyVault.outputs.name

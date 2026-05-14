@@ -42,14 +42,18 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     managedEnvironmentId: managedEnvironmentId
     configuration: {
-      secrets: [
-        { name: 'acr-password', value: acrPassword }
-        { name: 'azure-storage-connection-string', value: storageConnectionString }
-        { name: 'sf-client-id', value: sfClientId }
-        { name: 'sf-client-secret', value: sfClientSecret }
-        { name: 'sendgrid-api-key', value: sendgridApiKey }
-        { name: 'internal-api-key', value: internalApiKey }
-      ]
+      secrets: union(
+        [
+          { name: 'acr-password', value: acrPassword }
+          { name: 'azure-storage-connection-string', value: storageConnectionString }
+          { name: 'sf-client-id', value: sfClientId }
+          { name: 'sf-client-secret', value: sfClientSecret }
+          { name: 'internal-api-key', value: internalApiKey }
+        ],
+        empty(sendgridApiKey)
+          ? []
+          : [ { name: 'sendgrid-api-key', value: sendgridApiKey } ]
+      )
       // INTERNAL ingress — only UI container in the same environment can hit /api/*
       ingress: {
         external: false
@@ -75,20 +79,24 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'api'
           image: image
-          env: [
-            { name: 'ENV', value: 'prod' }
-            { name: 'PORT', value: '8000' }
-            { name: 'AZURE_STORAGE_CONNECTION_STRING', secretRef: 'azure-storage-connection-string' }
-            { name: 'SF_CLIENT_ID', secretRef: 'sf-client-id' }
-            { name: 'SF_CLIENT_SECRET', secretRef: 'sf-client-secret' }
-            { name: 'SF_LOGIN_URL', value: sfLoginUrl }
-            { name: 'SENDGRID_API_KEY', secretRef: 'sendgrid-api-key' }
-            { name: 'SENDGRID_FROM_EMAIL', value: sendgridFromEmail }
-            { name: 'INTERNAL_API_KEY', secretRef: 'internal-api-key' }
-            { name: 'BOOTSTRAP_ADMIN_EMAILS', value: bootstrapAdminEmails }
-            { name: 'SCHEDULER_TZ', value: schedulerTz }
-            { name: 'ALLOW_PROD_QUERY_WRITES', value: 'false' }
-          ]
+          env: union(
+            [
+              { name: 'ENV', value: 'prod' }
+              { name: 'PORT', value: '8000' }
+              { name: 'AZURE_STORAGE_CONNECTION_STRING', secretRef: 'azure-storage-connection-string' }
+              { name: 'SF_CLIENT_ID', secretRef: 'sf-client-id' }
+              { name: 'SF_CLIENT_SECRET', secretRef: 'sf-client-secret' }
+              { name: 'SF_LOGIN_URL', value: sfLoginUrl }
+              { name: 'SENDGRID_FROM_EMAIL', value: sendgridFromEmail }
+              { name: 'INTERNAL_API_KEY', secretRef: 'internal-api-key' }
+              { name: 'BOOTSTRAP_ADMIN_EMAILS', value: bootstrapAdminEmails }
+              { name: 'SCHEDULER_TZ', value: schedulerTz }
+              { name: 'ALLOW_PROD_QUERY_WRITES', value: 'false' }
+            ],
+            empty(sendgridApiKey)
+              ? []
+              : [ { name: 'SENDGRID_API_KEY', secretRef: 'sendgrid-api-key' } ]
+          )
           resources: {
             cpu: json(containerCpu)
             memory: containerMemory

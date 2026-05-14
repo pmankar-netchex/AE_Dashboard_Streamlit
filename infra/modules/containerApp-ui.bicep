@@ -116,8 +116,11 @@ resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (e
       }
     }
     login: {
+      // tokenStore disabled — current Container Apps Easy Auth API version
+      // requires a Blob Storage configuration when tokenStore is enabled,
+      // which we don't need for our cookie+header forwarding flow.
       tokenStore: {
-        enabled: true
+        enabled: false
       }
       preserveUrlFragmentsForLogins: false
     }
