@@ -10,6 +10,8 @@ import {
 } from "@/api/schedules";
 import { ReadOnlyGate, useReadOnly } from "@/components/auth/ReadOnlyGate";
 import { ScheduleForm } from "@/components/schedules/ScheduleForm";
+import { useMe } from "@/hooks/useMe";
+import { describeSchedule, parseCron } from "@/lib/cron";
 import { cn } from "@/lib/cn";
 
 export function SchedulesRoute() {
@@ -23,6 +25,8 @@ export function SchedulesRoute() {
 function SchedulesInner() {
   const readOnly = useReadOnly();
   const qc = useQueryClient();
+  const { data: me } = useMe();
+  const tz = me?.flags.scheduler_tz ?? "UTC";
   const [editing, setEditing] = useState<Schedule | null>(null);
   const [creating, setCreating] = useState(false);
   const { data, isLoading } = useQuery<Schedule[]>({
@@ -48,7 +52,9 @@ function SchedulesInner() {
         <div>
           <h1 className="text-2xl font-semibold">Reports / Schedules</h1>
           <p className="text-sm text-muted-foreground">
-            Scheduled email digests of the All Source Summary.
+            Scheduled email digests of the All Source Summary. Times are
+            interpreted in the scheduler timezone (
+            <span className="font-medium">{tz}</span>).
           </p>
         </div>
         {!readOnly && !creating && !editing && (
@@ -112,7 +118,12 @@ function SchedulesInner() {
                   <div className="font-medium">{s.name}</div>
                   <div className="text-xs text-muted-foreground">{s.subject}</div>
                 </td>
-                <td className="px-3 py-2 font-mono text-xs">{s.cron}</td>
+                <td className="px-3 py-2 text-xs">
+                  <div>{describeSchedule(parseCron(s.cron), tz)}</div>
+                  <code className="font-mono text-[10px] text-muted-foreground">
+                    {s.cron}
+                  </code>
+                </td>
                 <td className="px-3 py-2 text-xs">
                   {s.recipients.slice(0, 2).join(", ")}
                   {s.recipients.length > 2 && ` +${s.recipients.length - 2}`}

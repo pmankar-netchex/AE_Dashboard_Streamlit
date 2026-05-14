@@ -8,6 +8,7 @@ export interface MeResponse {
   source: "dev" | "entra";
   flags: {
     soql_writes_enabled: boolean;
+    scheduler_tz: string;
   };
 }
 

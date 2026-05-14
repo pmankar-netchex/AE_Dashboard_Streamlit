@@ -14,5 +14,8 @@ def me(
     user: CurrentUser = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ) -> MeResponse:
-    flags = MeFlags(soql_writes_enabled=settings.allow_prod_query_writes)
+    flags = MeFlags(
+        soql_writes_enabled=settings.allow_prod_query_writes,
+        scheduler_tz=settings.scheduler_tz,
+    )
     return MeResponse(email=user.email, role=user.role, source=user.source, flags=flags)

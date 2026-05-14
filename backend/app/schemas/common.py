@@ -17,6 +17,7 @@ class CurrentUser(BaseModel):
 
 class MeFlags(BaseModel):
     soql_writes_enabled: bool = False
+    scheduler_tz: str = "America/Chicago"
 
 
 class MeResponse(BaseModel):
