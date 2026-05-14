@@ -5,13 +5,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
-import { AuditRoute } from "@/pages/AuditRoute";
-import { ConfigRoute } from "@/pages/ConfigRoute";
-import { ConfigSalesforceRoute } from "@/pages/ConfigSalesforceRoute";
-import { ConfigSoqlRoute } from "@/pages/ConfigSoqlRoute";
-import { ConfigUsersRoute } from "@/pages/ConfigUsersRoute";
 import { DashboardRoute } from "@/pages/DashboardRoute";
-import { SchedulesRoute } from "@/pages/SchedulesRoute";
 import type { FilterSearch } from "@/lib/filterParams";
 
 const rootRoute = createRootRoute({
@@ -44,17 +38,18 @@ const dashboardRoute = createRoute({
   }),
 });
 
+// Lazy-loaded route components — keep the dashboard hot path small.
+// React.lazy isn't usable directly with TanStack Router, so we use the
+// route's `component` option with a lazy-imported wrapper.
 const schedulesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/schedules",
-  component: SchedulesRoute,
-});
+}).lazy(() => import("@/pages/SchedulesRoute.lazy").then((m) => m.Route));
 
 const configRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/config",
-  component: ConfigRoute,
-});
+}).lazy(() => import("@/pages/ConfigRoute.lazy").then((m) => m.Route));
 
 const configIndexRoute = createRoute({
   getParentRoute: () => configRoute,
@@ -67,26 +62,24 @@ const configIndexRoute = createRoute({
 const configSoqlRoute = createRoute({
   getParentRoute: () => configRoute,
   path: "soql",
-  component: ConfigSoqlRoute,
-});
+}).lazy(() => import("@/pages/ConfigSoqlRoute.lazy").then((m) => m.Route));
 
 const configSalesforceRoute = createRoute({
   getParentRoute: () => configRoute,
   path: "salesforce",
-  component: ConfigSalesforceRoute,
-});
+}).lazy(() =>
+  import("@/pages/ConfigSalesforceRoute.lazy").then((m) => m.Route),
+);
 
 const configUsersRoute = createRoute({
   getParentRoute: () => configRoute,
   path: "users",
-  component: ConfigUsersRoute,
-});
+}).lazy(() => import("@/pages/ConfigUsersRoute.lazy").then((m) => m.Route));
 
 const auditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/audit",
-  component: AuditRoute,
-});
+}).lazy(() => import("@/pages/AuditRoute.lazy").then((m) => m.Route));
 
 const routeTree = rootRoute.addChildren([
   indexRoute,

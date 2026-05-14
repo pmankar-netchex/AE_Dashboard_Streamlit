@@ -1,9 +1,7 @@
 import { FilterBar } from "@/components/filters/FilterBar";
 import { AllSourceSummary } from "@/components/dashboard/AllSourceSummary";
-import { AttainmentBarChart } from "@/components/dashboard/AttainmentBarChart";
-import { BookingsBarChart } from "@/components/dashboard/BookingsBarChart";
+import { DashboardCharts } from "@/components/dashboard/Charts";
 import { KpiRow } from "@/components/dashboard/KpiRow";
-import { PerformanceHeatmap } from "@/components/dashboard/PerformanceHeatmap";
 import { SectionTable } from "@/components/dashboard/SectionTable";
 import { AEDrillDownDrawer } from "@/components/drawer/AEDrillDownDrawer";
 import { useColumnMeta, useDashboard } from "@/hooks/useDashboard";
@@ -51,15 +49,8 @@ export function DashboardRoute() {
           </div>
         )}
 
-        {dash.data && dash.data.rows.length > 0 && (
-          <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <BookingsBarChart rows={dash.data.rows} />
-            <AttainmentBarChart rows={dash.data.rows} />
-          </section>
-        )}
-
         {dash.data && cols.data && dash.data.rows.length > 0 && (
-          <PerformanceHeatmap rows={dash.data.rows} columns={cols.data.columns} />
+          <DashboardCharts rows={dash.data.rows} columns={cols.data.columns} />
         )}
 
         {(dash.isLoading || cols.isLoading) && (
