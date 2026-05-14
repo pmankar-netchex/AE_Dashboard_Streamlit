@@ -16,6 +16,7 @@ from app.routers import (
     health,
     me,
     salesforce,
+    schedules,
     soql,
     users,
 )
@@ -24,13 +25,19 @@ from app.routers import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
-    # Provision storage + seed bootstrap admins (no-op when storage unconfigured)
     from app.config import get_settings
+    from app.scheduler import start_scheduler, stop_scheduler
+    from app.schedulers_registration import sync_all_schedules
     from app.storage.migrations import bootstrap_admins, ensure_tables
 
     ensure_tables()
     bootstrap_admins(get_settings().bootstrap_admin_list)
-    yield
+    start_scheduler()
+    sync_all_schedules()
+    try:
+        yield
+    finally:
+        stop_scheduler()
 
 
 def create_app() -> FastAPI:
@@ -60,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(soql.router)
     app.include_router(users.router)
     app.include_router(audit.router)
+    app.include_router(schedules.router)
 
     return app
 
