@@ -7,6 +7,9 @@ import {
 import { AppShell } from "@/components/layout/AppShell";
 import { AuditRoute } from "@/pages/AuditRoute";
 import { ConfigRoute } from "@/pages/ConfigRoute";
+import { ConfigSalesforceRoute } from "@/pages/ConfigSalesforceRoute";
+import { ConfigSoqlRoute } from "@/pages/ConfigSoqlRoute";
+import { ConfigUsersRoute } from "@/pages/ConfigUsersRoute";
 import { DashboardRoute } from "@/pages/DashboardRoute";
 import { SchedulesRoute } from "@/pages/SchedulesRoute";
 import type { FilterSearch } from "@/lib/filterParams";
@@ -27,20 +30,18 @@ const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/dashboard",
   component: DashboardRoute,
-  validateSearch: (raw: Record<string, unknown>): FilterSearch => {
-    return {
-      manager: typeof raw.manager === "string" ? raw.manager : undefined,
-      ae: Array.isArray(raw.ae)
-        ? (raw.ae as string[])
-        : typeof raw.ae === "string"
-          ? [raw.ae as string]
-          : undefined,
-      period: typeof raw.period === "string" ? raw.period : undefined,
-      from: typeof raw.from === "string" ? raw.from : undefined,
-      to: typeof raw.to === "string" ? raw.to : undefined,
-      aeDrillId: typeof raw.aeDrillId === "string" ? raw.aeDrillId : undefined,
-    };
-  },
+  validateSearch: (raw: Record<string, unknown>): FilterSearch => ({
+    manager: typeof raw.manager === "string" ? raw.manager : undefined,
+    ae: Array.isArray(raw.ae)
+      ? (raw.ae as string[])
+      : typeof raw.ae === "string"
+        ? [raw.ae as string]
+        : undefined,
+    period: typeof raw.period === "string" ? raw.period : undefined,
+    from: typeof raw.from === "string" ? raw.from : undefined,
+    to: typeof raw.to === "string" ? raw.to : undefined,
+    aeDrillId: typeof raw.aeDrillId === "string" ? raw.aeDrillId : undefined,
+  }),
 });
 
 const schedulesRoute = createRoute({
@@ -55,6 +56,32 @@ const configRoute = createRoute({
   component: ConfigRoute,
 });
 
+const configIndexRoute = createRoute({
+  getParentRoute: () => configRoute,
+  path: "/",
+  beforeLoad: () => {
+    throw redirect({ to: "/config/soql" });
+  },
+});
+
+const configSoqlRoute = createRoute({
+  getParentRoute: () => configRoute,
+  path: "soql",
+  component: ConfigSoqlRoute,
+});
+
+const configSalesforceRoute = createRoute({
+  getParentRoute: () => configRoute,
+  path: "salesforce",
+  component: ConfigSalesforceRoute,
+});
+
+const configUsersRoute = createRoute({
+  getParentRoute: () => configRoute,
+  path: "users",
+  component: ConfigUsersRoute,
+});
+
 const auditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/audit",
@@ -65,7 +92,12 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
   schedulesRoute,
-  configRoute,
+  configRoute.addChildren([
+    configIndexRoute,
+    configSoqlRoute,
+    configSalesforceRoute,
+    configUsersRoute,
+  ]),
   auditRoute,
 ]);
 
