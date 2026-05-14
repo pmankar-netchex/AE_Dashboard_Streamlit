@@ -45,49 +45,47 @@ export function PerformanceHeatmap({ rows, columns }: Props) {
         <div
           className="grid gap-px bg-border"
           style={{
-            gridTemplateColumns: `200px repeat(${numericCols.length}, minmax(40px, 1fr))`,
+            gridTemplateColumns: `180px repeat(${numericCols.length}, minmax(72px, 1fr))`,
           }}
         >
-          {/* Header row — labels rotated 90° so long names don't collide */}
-          <div className="sticky left-0 z-10 flex h-40 items-end bg-background px-2 pb-2 text-xs font-medium text-muted-foreground">
+          {/* Header row — horizontal labels with two-line abbreviation */}
+          <div className="sticky left-0 z-10 flex h-14 items-end bg-background px-2 pb-2 text-xs font-medium text-muted-foreground">
             AE
           </div>
-          {numericCols.map((c) => (
-            <Tooltip.Root key={`h-${c.col_id}`}>
-              <Tooltip.Trigger asChild>
-                <div className="relative flex h-40 cursor-help justify-center overflow-visible bg-background">
-                  <span
-                    className="absolute bottom-1 whitespace-nowrap text-[11px] text-muted-foreground"
-                    style={{
-                      transform: "rotate(-90deg)",
-                      transformOrigin: "center bottom",
-                      // Translate so the bottom of the rotated text sits just
-                      // above the heatmap grid, and the long axis runs upward.
-                      left: "50%",
-                      marginLeft: "-0.5em",
-                    }}
+          {numericCols.map((c) => {
+            const { primary, period } = makeShortLabel(c);
+            return (
+              <Tooltip.Root key={`h-${c.col_id}`}>
+                <Tooltip.Trigger asChild>
+                  <div className="flex h-14 cursor-help flex-col items-center justify-end gap-0.5 bg-background px-1 pb-1.5 leading-tight">
+                    <span className="line-clamp-2 break-words text-center text-[10px] font-medium text-foreground">
+                      {primary}
+                    </span>
+                    {period && (
+                      <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {period}
+                      </span>
+                    )}
+                  </div>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content
+                    side="bottom"
+                    sideOffset={4}
+                    className="z-50 max-w-xs rounded-md border border-border bg-background px-2.5 py-1.5 text-xs shadow-md"
                   >
-                    {c.display_name}
-                  </span>
-                </div>
-              </Tooltip.Trigger>
-              <Tooltip.Portal>
-                <Tooltip.Content
-                  side="bottom"
-                  sideOffset={4}
-                  className="z-50 max-w-xs rounded-md border border-border bg-background px-2.5 py-1.5 text-xs shadow-md"
-                >
-                  <div className="font-medium text-foreground">{c.display_name}</div>
-                  {(c.description || c.aggregation) && (
-                    <div className="mt-1 leading-snug text-muted-foreground">
-                      {c.description || c.aggregation}
-                    </div>
-                  )}
-                  <Tooltip.Arrow className="fill-background" />
-                </Tooltip.Content>
-              </Tooltip.Portal>
-            </Tooltip.Root>
-          ))}
+                    <div className="font-medium text-foreground">{c.display_name}</div>
+                    {(c.description || c.aggregation) && (
+                      <div className="mt-1 leading-snug text-muted-foreground">
+                        {c.description || c.aggregation}
+                      </div>
+                    )}
+                    <Tooltip.Arrow className="fill-background" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+            );
+          })}
 
           {/* Data rows */}
           {rows.map((r) =>
@@ -199,4 +197,53 @@ function Legend() {
       </span>
     </div>
   );
+}
+
+/**
+ * Build a compact column header: a primary line (display name with common
+ * words abbreviated) plus an optional period marker on a second line.
+ *
+ * "Quota (YTD)"               → primary "Quota",           period "YTD"
+ * "Bookings (MTD)"            → primary "Bookings",        period "MTD"
+ * "Quota Attainment % (YTD)"  → primary "Attain %",        period "YTD"
+ * "Open Pipeline (This Mo.)"  → primary "Open Pipe",       period "This Mo"
+ * "Self-Gen Pipeline (Per.)"  → primary "SG Pipe",         period ""
+ * "Unique Email Recipients"   → primary "Email Recip",     period ""
+ */
+function makeShortLabel(c: ColumnMeta): { primary: string; period: string } {
+  const display = c.display_name || c.col_id;
+  const periodMatch = display.match(/\(([^)]+)\)/);
+  const period = periodMatch ? shortPeriod(periodMatch[1]) : "";
+
+  let base = display.replace(/\([^)]*\)/g, "").trim();
+  const replacements: [RegExp, string][] = [
+    [/\bSelf-Gen\b/gi, "SG"],
+    [/\bChannel Partner(s)?\b/gi, "CP"],
+    [/\bMarketing\b/g, "Mkt"],
+    [/\bTotal\s+/gi, ""],
+    [/\bUnique\s+/gi, ""],
+    [/\bPipeline\b/gi, "Pipe"],
+    [/\bBookings?\b/gi, "Bookings"],
+    [/\bOpportunities\b/gi, "Opps"],
+    [/\bAttainment\b/gi, "Attain"],
+    [/\bRecipients?\b/gi, "Recip"],
+    [/\bMeetings?\s+Held\b/gi, "Mtgs Held"],
+    [/\bMeetings?\s+Scheduled\b/gi, "Mtgs Sched"],
+    [/\bAccounts?\s+w\//gi, "Accts w/"],
+    [/\bVoicemails?\b/gi, "Vmail"],
+  ];
+  for (const [re, sub] of replacements) base = base.replace(re, sub);
+  base = base.replace(/\s+/g, " ").trim();
+
+  return { primary: base, period };
+}
+
+function shortPeriod(p: string): string {
+  const l = p.toLowerCase().trim();
+  if (l === "ytd" || l === "mtd" || l === "qtd") return l.toUpperCase();
+  if (l === "period") return "";
+  if (l.includes("this month")) return "This Mo";
+  if (l.includes("next month")) return "Next Mo";
+  if (l.includes("last month")) return "Last Mo";
+  return p.length > 8 ? p.slice(0, 8) : p;
 }

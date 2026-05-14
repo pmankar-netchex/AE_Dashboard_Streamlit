@@ -62,23 +62,24 @@ export function SideNav() {
   return (
     <aside
       className={cn(
-        "flex flex-col border-r border-border bg-muted/30 transition-[width] duration-150",
+        "flex shrink-0 flex-col border-r border-border bg-muted/30 transition-[width] duration-150",
         collapsed ? "w-14" : "w-60",
       )}
+      style={{ width: collapsed ? 56 : 240 }}
     >
       <div
         className={cn(
-          "flex h-14 items-center border-b border-border/60",
-          collapsed ? "justify-center" : "justify-between px-3",
+          "flex h-14 shrink-0 items-center gap-2 border-b border-border/60 overflow-hidden",
+          collapsed ? "justify-center px-2" : "justify-between px-3",
         )}
       >
-        <Logo iconOnly={collapsed} size={collapsed ? 28 : 28} />
+        <Logo iconOnly={collapsed} size={28} className="min-w-0 flex-1" />
         {!collapsed && (
           <button
             type="button"
             onClick={toggle}
             aria-label="Collapse sidebar"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>

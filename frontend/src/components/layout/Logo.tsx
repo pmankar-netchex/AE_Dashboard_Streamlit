@@ -13,7 +13,7 @@ interface Props {
  */
 export function Logo({ iconOnly = false, size = 28, className }: Props) {
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div className={cn("flex min-w-0 items-center gap-2", className)}>
       <svg
         viewBox="0 0 32 32"
         width={size}
@@ -48,9 +48,11 @@ export function Logo({ iconOnly = false, size = 28, className }: Props) {
         </g>
       </svg>
       {!iconOnly && (
-        <span className="flex flex-col leading-tight">
-          <span className="text-sm font-semibold text-foreground">AE Dashboard</span>
-          <span className="text-[10px] text-muted-foreground">
+        <span className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate whitespace-nowrap text-sm font-semibold text-foreground">
+            AE Dashboard
+          </span>
+          <span className="truncate whitespace-nowrap text-[10px] text-muted-foreground">
             Performance Analytics
           </span>
         </span>
