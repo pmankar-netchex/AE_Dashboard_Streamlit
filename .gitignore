@@ -38,3 +38,22 @@ tokens/
 *.csv
 *.xlsx
 data/
+
+# Backend
+backend/.venv/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.mypy_cache/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Defensive — if npm install accidentally runs at repo root, ignore the cruft.
+/node_modules/
+/package.json
+/package-lock.json
+
+# Local dev fallback for SOQL overrides (used when AZURE_STORAGE_CONNECTION_STRING is unset)
+soql_overrides.json

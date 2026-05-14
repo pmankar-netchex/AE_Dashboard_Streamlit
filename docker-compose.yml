@@ -1,0 +1,50 @@
+# Local-deploy stack. Reads secrets from ./.env (same file the legacy
+# Streamlit app used; the backend now accepts both SALESFORCE_* and SF_*
+# names via AliasChoices, so no edits required).
+#
+#   docker compose up --build
+#   open http://localhost:5173
+#
+# The UI dev server proxies /api → backend:8000 via the same vite config
+# you use locally.
+
+services:
+  api:
+    build:
+      context: ./backend
+    container_name: aedash-api
+    env_file:
+      - .env
+    environment:
+      ENV: ${ENV:-dev}
+      DEV_ROLE: ${DEV_ROLE:-admin}
+      DEV_USER_EMAIL: ${DEV_USER_EMAIL:-dev@local}
+      SCHEDULER_TZ: ${SCHEDULER_TZ:-America/Chicago}
+      UI_ORIGIN: ${UI_ORIGIN:-http://localhost:5173}
+      PORT: "8000"
+      ALLOW_PROD_QUERY_WRITES: ${ALLOW_PROD_QUERY_WRITES:-false}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  ui:
+    image: node:20-alpine
+    container_name: aedash-ui
+    working_dir: /app
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      # Vite dev server proxies /api to the API container hostname.
+      VITE_API_BASE_URL: ""
+      VITE_API_PROXY_TARGET: "http://api:8000"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api

@@ -2,32 +2,21 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "location": {
-      "value": "eastus"
-    },
-    "appNamePrefix": {
-      "value": "aedash"
-    },
-    "acrName": {
-      "value": ""
-    },
-    "acrSku": {
-      "value": "Basic"
-    },
-    "minReplicas": {
-      "value": 1
-    },
-    "maxReplicas": {
-      "value": 3
-    },
-    "containerCpu": {
-      "value": "0.5"
-    },
-    "containerMemory": {
-      "value": "1.0Gi"
-    },
-    "containerImageRepository": {
-      "value": "ae-dashboard"
-    }
+    "location":              { "value": "eastus" },
+    "appNamePrefix":         { "value": "aedash" },
+    "acrSku":                { "value": "Basic" },
+
+    "sendgridFromEmail":     { "value": "dashboard@netchexonline.com" },
+    "bootstrapAdminEmails":  { "value": "" },
+    "sfLoginUrl":            { "value": "https://login.salesforce.com" },
+    "schedulerTz":           { "value": "America/Chicago" },
+
+    "entraClientId":         { "value": "5fffa614-3447-439b-88e1-f52985fab497" },
+
+    "sfClientId":         { "value": "" },
+    "sfClientSecret":     { "value": "" },
+    "sendgridApiKey":     { "value": "" },
+    "internalApiKey":     { "value": "" },
+    "entraClientSecret":  { "value": "" }
   }
 }
