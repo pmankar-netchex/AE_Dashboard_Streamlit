@@ -10,6 +10,7 @@ import {
   Settings,
 } from "lucide-react";
 import { Logo } from "./Logo";
+import { UserMenu } from "./UserMenu";
 import { useUiStore } from "@/stores/uiStore";
 import { SECTION_DEFS } from "@/lib/sections";
 import { cn } from "@/lib/cn";
@@ -87,25 +88,28 @@ export function SideNav() {
         <NavGroup nav={ADMIN_NAV} collapsed={collapsed} pathname={location.pathname} />
       </nav>
 
-      {/* Footer — collapse toggle */}
-      <button
-        type="button"
-        onClick={toggle}
-        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        className={cn(
-          "flex shrink-0 items-center gap-2 border-t border-border/60 px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground",
-          collapsed && "justify-center px-2",
-        )}
-      >
-        {collapsed ? (
-          <ChevronRight className="h-4 w-4" />
-        ) : (
-          <>
-            <ChevronLeft className="h-4 w-4" />
-            <span>Collapse</span>
-          </>
-        )}
-      </button>
+      {/* Footer — user identity + collapse toggle */}
+      <div className="shrink-0 border-t border-border/60 px-2 py-2">
+        <UserMenu collapsed={collapsed} />
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className={cn(
+            "mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground",
+            collapsed && "justify-center",
+          )}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <>
+              <ChevronLeft className="h-3.5 w-3.5" />
+              <span>Collapse sidebar</span>
+            </>
+          )}
+        </button>
+      </div>
     </aside>
   );
 }
