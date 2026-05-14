@@ -48,19 +48,23 @@ export function PerformanceHeatmap({ rows, columns }: Props) {
             gridTemplateColumns: `200px repeat(${numericCols.length}, minmax(40px, 1fr))`,
           }}
         >
-          {/* Header row — labels rotated 45° so the full name fits */}
-          <div className="sticky left-0 z-10 flex h-32 items-end bg-background px-2 pb-2 text-xs font-medium text-muted-foreground">
+          {/* Header row — labels rotated 90° so long names don't collide */}
+          <div className="sticky left-0 z-10 flex h-40 items-end bg-background px-2 pb-2 text-xs font-medium text-muted-foreground">
             AE
           </div>
           {numericCols.map((c) => (
             <Tooltip.Root key={`h-${c.col_id}`}>
               <Tooltip.Trigger asChild>
-                <div className="flex h-32 cursor-help items-end justify-center bg-background">
+                <div className="relative flex h-40 cursor-help justify-center overflow-visible bg-background">
                   <span
-                    className="origin-bottom-left whitespace-nowrap text-[11px] text-muted-foreground"
+                    className="absolute bottom-1 whitespace-nowrap text-[11px] text-muted-foreground"
                     style={{
-                      transform: "rotate(-50deg) translateY(-2px)",
-                      transformOrigin: "left bottom",
+                      transform: "rotate(-90deg)",
+                      transformOrigin: "center bottom",
+                      // Translate so the bottom of the rotated text sits just
+                      // above the heatmap grid, and the long axis runs upward.
+                      left: "50%",
+                      marginLeft: "-0.5em",
                     }}
                   >
                     {c.display_name}
