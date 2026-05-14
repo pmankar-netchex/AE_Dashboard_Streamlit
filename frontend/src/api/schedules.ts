@@ -67,3 +67,16 @@ export function sendNow(id: string): Promise<SendNowResult> {
     method: "POST",
   });
 }
+
+export interface SendOnceBody {
+  recipients: string[];
+  subject?: string;
+  filters?: Record<string, unknown>;
+}
+
+export function sendOnce(body: SendOnceBody): Promise<SendNowResult> {
+  return api<SendNowResult>("/api/schedules/send-once", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}

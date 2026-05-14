@@ -39,3 +39,9 @@ class SendNowResult(BaseModel):
     ok: bool
     message_id: str = ""
     error: str | None = None
+
+
+class SendOnceIn(BaseModel):
+    recipients: list[str]
+    subject: str = "AE Performance — All Source Summary"
+    filters: dict = {}

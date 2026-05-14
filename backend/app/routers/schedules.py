@@ -13,6 +13,7 @@ from app.schemas.schedules import (
     ScheduleOut,
     ScheduleUpdateIn,
     SendNowResult,
+    SendOnceIn,
 )
 from app.services.audit_service import get_audit_service
 from app.services.schedule_service import get_schedule_service
@@ -96,6 +97,41 @@ def delete_schedule(
         target=schedule_id,
     )
     return None
+
+
+@router.post("/send-once", response_model=SendNowResult)
+def send_once(
+    body: SendOnceIn, actor: CurrentUser = Depends(require_admin)
+) -> SendNowResult:
+    """One-off email — render the current All Source Summary and send to the
+    given recipients without creating a saved schedule."""
+    recipients = [r.strip() for r in body.recipients if r and r.strip()]
+    if not recipients:
+        raise HTTPException(400, detail="recipients is required")
+    from app.scheduler.jobs import render_and_send
+
+    try:
+        msg_id = render_and_send(
+            recipients=recipients,
+            subject=body.subject,
+            filters=body.filters or {},
+        )
+        get_audit_service().write(
+            actor=actor.email,
+            entity="schedule",
+            action="send-once",
+            target=",".join(recipients)[:200],
+            details={"message_id": msg_id, "recipients_count": len(recipients)},
+        )
+        return SendNowResult(ok=True, message_id=msg_id or "")
+    except Exception as exc:
+        get_audit_service().write(
+            actor=actor.email,
+            entity="schedule",
+            action="send-once-failed",
+            details={"error": str(exc), "recipients_count": len(recipients)},
+        )
+        return SendNowResult(ok=False, error=str(exc))
 
 
 @router.post("/{schedule_id}/send-now", response_model=SendNowResult)

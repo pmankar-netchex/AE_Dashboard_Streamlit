@@ -9,6 +9,7 @@ import {
   updateSchedule,
 } from "@/api/schedules";
 import { ReadOnlyGate, useReadOnly } from "@/components/auth/ReadOnlyGate";
+import { ImmediateSend } from "@/components/schedules/ImmediateSend";
 import { ScheduleForm } from "@/components/schedules/ScheduleForm";
 import { useMe } from "@/hooks/useMe";
 import { describeSchedule, parseCron } from "@/lib/cron";
@@ -59,13 +60,16 @@ function SchedulesInner() {
           </p>
         </div>
         {!readOnly && !creating && !editing && (
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-accent"
-          >
-            <Plus className="h-3.5 w-3.5" /> New schedule
-          </button>
+          <div className="flex items-center gap-2">
+            <ImmediateSend readOnly={readOnly} />
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-accent"
+            >
+              <Plus className="h-3.5 w-3.5" /> New schedule
+            </button>
+          </div>
         )}
       </header>
 
