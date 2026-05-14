@@ -37,7 +37,6 @@ export function normalizeColumn(
  * Pale tint for in-cell backgrounds. Tuned to stay legible behind dark text:
  *   norm=0  → very light pink  (255, 245, 245)
  *   norm=1  → very light green (240, 252, 240)
- * Half the saturation of the original Streamlit heatmap.
  */
 export function lightHeatmapColor(norm: number | null): string {
   if (norm === null) return "transparent";

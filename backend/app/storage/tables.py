@@ -12,7 +12,6 @@ TABLE_HISTORY = "querieshistory"
 TABLE_USERS = "users"
 TABLE_SCHEDULES = "schedules"
 TABLE_AUDIT = "audit"
-TABLE_JOBSTORE = "jobstore"
 
 ALL_TABLES = [
     TABLE_QUERIES,
@@ -20,7 +19,6 @@ ALL_TABLES = [
     TABLE_USERS,
     TABLE_SCHEDULES,
     TABLE_AUDIT,
-    TABLE_JOBSTORE,
 ]
 
 _service_cache = None

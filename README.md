@@ -23,7 +23,7 @@ against Salesforce.
                     └──┬───────────────┬───────┘
         Salesforce ◀───┘               └──▶ Azure Table Storage
         (client_credentials)                (queries, querieshistory, users,
-                                             schedules, audit, jobstore)
+                                             schedules, audit)
                                   │
                                   ▼
                               SendGrid (scheduled digests)

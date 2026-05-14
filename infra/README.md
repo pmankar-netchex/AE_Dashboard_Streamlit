@@ -7,7 +7,7 @@ Composition: `main.bicep` calls per-resource modules under `modules/`.
 | `logAnalytics.bicep` | Log Analytics workspace for Container Apps logs |
 | `containerEnv.bicep` | Container Apps environment |
 | `acr.bicep` | Azure Container Registry (admin-enabled for simple auth) |
-| `storage.bicep` | Storage account + Table services for the 6 app tables (queries, querieshistory, users, schedules, audit, jobstore) |
+| `storage.bicep` | Storage account + Table services for the 5 app tables (queries, querieshistory, users, schedules, audit) |
 | `keyVault.bicep` | Key Vault for SF/SendGrid/internal secrets |
 | `containerApp-api.bicep` | FastAPI app — internal ingress, single replica (scheduler owner) |
 | `containerApp-ui.bicep` | Nginx + React build — external ingress, optional Easy Auth |

@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     # Bootstrap admins (comma-separated) seeded into users table on startup
     bootstrap_admin_emails: str = Field(default="", validation_alias="BOOTSTRAP_ADMIN_EMAILS")
 
-    # Salesforce (client-credentials). Accept the legacy SALESFORCE_* names
-    # too so an existing .env from the Streamlit days works without edits.
+    # Salesforce (client-credentials). Accepts both SF_* and SALESFORCE_*
+    # env var names.
     sf_client_id: str = Field(
         default="",
         validation_alias=AliasChoices("SF_CLIENT_ID", "SALESFORCE_CLIENT_ID"),

@@ -1,8 +1,5 @@
-"""Pure time/filter helpers, ported from legacy src/meta_filters.py.
-
-The Streamlit-only `render_sidebar_filters` was deleted; its UI logic is
-rebuilt in React. Everything else here is pure Python.
-"""
+"""Pure time/filter helpers — fiscal-year math, period resolution, and the
+Salesforce filter-param builder consumed by `data_engine`."""
 from __future__ import annotations
 
 import calendar

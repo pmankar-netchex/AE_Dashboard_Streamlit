@@ -12,8 +12,7 @@ CRITICAL RULES (from spec):
 7. Section 4 Channel Partner exclusions are mandatory (all four).
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass

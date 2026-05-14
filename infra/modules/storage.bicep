@@ -25,7 +25,6 @@ var tableNames = [
   'users'
   'schedules'
   'audit'
-  'jobstore'
 ]
 
 resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [

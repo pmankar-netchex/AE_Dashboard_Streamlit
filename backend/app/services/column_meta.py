@@ -61,7 +61,7 @@ def format_hint(col_id: str) -> FormatHint:
     return "number"
 
 
-# KPI specs — preserves the exact Streamlit ordering and aggregation rules.
+# KPI specs — canonical ordering and aggregation rules for the 12-card grid.
 # (col_id, is_average)
 KPI_ROW_1: list[tuple[str, bool]] = [
     ("S1-COL-C", False),  # Quota YTD
