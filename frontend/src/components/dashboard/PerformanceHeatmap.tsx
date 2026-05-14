@@ -1,8 +1,8 @@
+import * as Tooltip from "@radix-ui/react-tooltip";
 import type { AERow, ColumnMeta } from "@/types/dashboard";
 import { rdylgnFor } from "@/lib/heatmap";
 import { fmt } from "@/lib/formatters";
 import { LOWER_IS_BETTER } from "@/lib/columns";
-import { InfoTooltip } from "@/components/ui/InfoTooltip";
 
 interface Props {
   rows: AERow[];
@@ -31,44 +31,63 @@ export function PerformanceHeatmap({ rows, columns }: Props) {
 
   return (
     <section className="rounded-lg border border-border p-4">
-      <header className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-medium">Performance Heatmap</h3>
-        <p className="text-xs text-muted-foreground">
-          Per-column normalized; red→yellow→green. Hover a cell for the AE, column, and value.
-        </p>
+      <header className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium">Performance Heatmap</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Per-column normalized. Hover a cell for the AE, column, and value.
+          </p>
+        </div>
+        <Legend />
       </header>
+
       <div className="overflow-x-auto">
         <div
-          className="grid"
+          className="grid gap-px bg-border"
           style={{
-            gridTemplateColumns: `200px repeat(${numericCols.length}, minmax(40px, 1fr))`,
+            gridTemplateColumns: `200px repeat(${numericCols.length}, minmax(56px, 1fr))`,
           }}
         >
+          {/* Header row */}
           <div className="sticky left-0 z-10 bg-background px-2 py-2 text-xs font-medium text-muted-foreground">
             AE
           </div>
           {numericCols.map((c) => (
-            <InfoTooltip
-              key={c.col_id}
-              title={c.display_name}
-              description={c.description || c.aggregation || c.col_id}
-              side="bottom"
-            >
-              <div className="cursor-help truncate px-1 py-2 text-center text-[10px] font-medium text-muted-foreground">
-                {abbreviate(c.display_name)}
-              </div>
-            </InfoTooltip>
+            <Tooltip.Root key={`h-${c.col_id}`}>
+              <Tooltip.Trigger asChild>
+                <div className="cursor-help truncate bg-background px-1 py-2 text-center text-[10px] font-medium text-muted-foreground">
+                  {abbreviate(c)}
+                </div>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  side="bottom"
+                  sideOffset={4}
+                  className="z-50 max-w-xs rounded-md border border-border bg-background px-2.5 py-1.5 text-xs shadow-md"
+                >
+                  <div className="font-medium text-foreground">{c.display_name}</div>
+                  {(c.description || c.aggregation) && (
+                    <div className="mt-1 leading-snug text-muted-foreground">
+                      {c.description || c.aggregation}
+                    </div>
+                  )}
+                  <Tooltip.Arrow className="fill-background" />
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
           ))}
-          {rows.map((r) => (
-            <FragmentRow key={r.ae_id} row={r} cols={numericCols} maxByCol={maxByCol} />
-          ))}
+
+          {/* Data rows */}
+          {rows.map((r) =>
+            renderRow({ row: r, cols: numericCols, maxByCol }),
+          )}
         </div>
       </div>
     </section>
   );
 }
 
-function FragmentRow({
+function renderRow({
   row,
   cols,
   maxByCol,
@@ -80,6 +99,7 @@ function FragmentRow({
   return (
     <>
       <div
+        key={`r-${row.ae_id}`}
         className="sticky left-0 z-10 truncate bg-background px-2 py-2 text-xs"
         title={row.ae_name}
       >
@@ -94,36 +114,90 @@ function FragmentRow({
           norm = LOWER_IS_BETTER.has(c.col_id) ? 1 - raw : raw;
         }
         return (
-          <InfoTooltip
-            key={c.col_id}
-            title={`${row.ae_name} — ${c.display_name}`}
-            description={`${fmt(v, c.format)}${c.description ? "\n" + c.description : ""}`}
-            side="top"
-          >
-            <div
-              className="h-7 cursor-help border border-transparent transition-[border-color,box-shadow] hover:border-foreground/70 hover:shadow-[0_0_0_1px_rgba(0,0,0,0.05)]"
-              style={{ backgroundColor: rdylgnFor(norm) }}
-              aria-label={`${row.ae_name} — ${c.display_name}: ${fmt(v, c.format)}`}
-            />
-          </InfoTooltip>
+          <Tooltip.Root key={`${row.ae_id}-${c.col_id}`}>
+            <Tooltip.Trigger asChild>
+              <div
+                className="h-8 cursor-help transition-[box-shadow] hover:shadow-[inset_0_0_0_2px_rgba(0,0,0,0.65)]"
+                style={{ backgroundColor: rdylgnFor(norm) }}
+                aria-label={`${row.ae_name} — ${c.display_name}: ${fmt(v, c.format)}`}
+              />
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content
+                side="top"
+                sideOffset={4}
+                className="z-50 max-w-xs rounded-md border border-border bg-background px-2.5 py-1.5 text-xs shadow-md"
+              >
+                <div className="font-medium text-foreground">
+                  {row.ae_name} — {c.display_name}
+                </div>
+                <div className="mt-1 font-mono text-sm text-foreground">
+                  {fmt(v, c.format)}
+                </div>
+                {c.description && (
+                  <div className="mt-1 leading-snug text-muted-foreground">
+                    {c.description}
+                  </div>
+                )}
+                <Tooltip.Arrow className="fill-background" />
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
         );
       })}
     </>
   );
 }
 
+/** Render a tiny gradient bar legend on the right of the section header. */
+function Legend() {
+  const stops = [0, 0.25, 0.5, 0.75, 1];
+  return (
+    <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+      <span>Worse</span>
+      <div className="flex h-3 w-32 overflow-hidden rounded border border-border">
+        {stops.map((s) => (
+          <div
+            key={s}
+            className="h-full flex-1"
+            style={{ backgroundColor: rdylgnFor(s) }}
+          />
+        ))}
+      </div>
+      <span>Better</span>
+    </div>
+  );
+}
+
 /**
- * Compact header label for the heatmap grid. Tries to keep things distinct
- * (uses 2-3 chars from each significant word) without leaning on the cryptic
- * col_id suffix. Falls back to the trimmed col_id when display_name is empty.
+ * Compact, unique header label for the heatmap grid.
+ *
+ * Preserves a period marker (YTD / MTD / "This Month" / "Next Month") so
+ * "Quota (YTD)" and "Quota (MTD)" don't both collapse to "Quota".
  */
-function abbreviate(displayName: string): string {
-  if (!displayName) return "—";
-  const cleaned = displayName.replace(/\([^)]*\)/g, "").trim();
+function abbreviate(c: ColumnMeta): string {
+  const display = c.display_name || c.col_id;
+  const periodMatch = display.match(/\(([^)]+)\)/);
+  const cleaned = display.replace(/\([^)]*\)/g, "").trim();
   const parts = cleaned.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0].slice(0, 6);
-  return parts
-    .slice(0, 3)
-    .map((p, i) => (i === 0 ? p.slice(0, 3) : p.slice(0, 2)))
-    .join(" ");
+  const base =
+    parts.length === 1
+      ? parts[0].slice(0, 6)
+      : parts
+          .slice(0, 2)
+          .map((p, i) => (i === 0 ? p.slice(0, 4) : p.slice(0, 3)))
+          .join(" ");
+  if (periodMatch) {
+    return `${base} ${shortPeriod(periodMatch[1])}`;
+  }
+  return base;
+}
+
+function shortPeriod(p: string): string {
+  const lower = p.toLowerCase();
+  if (lower === "ytd" || lower === "mtd" || lower === "qtd") return lower.toUpperCase();
+  if (lower.includes("this month")) return "TM";
+  if (lower.includes("next month")) return "NM";
+  if (lower.includes("last month")) return "LM";
+  return p.slice(0, 3);
 }
