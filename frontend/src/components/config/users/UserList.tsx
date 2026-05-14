@@ -11,10 +11,12 @@ import {
 } from "@/api/users";
 import { useReadOnly } from "@/components/auth/ReadOnlyGate";
 import { useMe } from "@/hooks/useMe";
+import { formatInTz, useTz } from "@/lib/datetime";
 import { cn } from "@/lib/cn";
 
 export function UserList() {
   const readOnly = useReadOnly();
+  const tz = useTz();
   const { data: me } = useMe();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery<UserRow[]>({
@@ -182,7 +184,7 @@ export function UserList() {
                     </button>
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {u.added_at?.slice(0, 10) || "—"}
+                    {formatInTz(u.added_at, tz, { dateOnly: true })}
                     {u.added_by ? ` • ${u.added_by}` : ""}
                   </td>
                   <td className="px-3 py-2 text-right">

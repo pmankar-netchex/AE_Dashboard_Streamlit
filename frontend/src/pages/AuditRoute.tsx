@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { type AuditPage, fetchAudit } from "@/api/audit";
+import { formatInTz, useTz } from "@/lib/datetime";
 import { cn } from "@/lib/cn";
 
 const ENTITY_FILTERS = ["", "user", "soql", "salesforce", "schedule"];
@@ -14,6 +15,7 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 export function AuditRoute() {
+  const tz = useTz();
   const [entity, setEntity] = useState<string>("");
   const [cursor, setCursor] = useState<string | null>(null);
   const { data, isLoading } = useQuery<AuditPage>({
@@ -96,7 +98,7 @@ export function AuditRoute() {
             {data?.events.map((ev, i) => (
               <tr key={`${ev.timestamp}-${i}`} className="border-t border-border">
                 <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
-                  {ev.timestamp.replace("T", " ").slice(0, 19)}
+                  {formatInTz(ev.timestamp, tz)}
                 </td>
                 <td className="px-3 py-2 text-xs">{ev.actor}</td>
                 <td className="px-3 py-2 text-xs capitalize">{ev.entity}</td>

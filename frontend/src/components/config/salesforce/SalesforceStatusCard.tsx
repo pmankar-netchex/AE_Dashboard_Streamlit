@@ -6,6 +6,7 @@ import {
   refreshSalesforceToken,
 } from "@/api/salesforce";
 import { useReadOnly } from "@/components/auth/ReadOnlyGate";
+import { formatInTz, useTz } from "@/lib/datetime";
 import { cn } from "@/lib/cn";
 
 function ageLabel(seconds: number | null | undefined): string {
@@ -17,6 +18,7 @@ function ageLabel(seconds: number | null | undefined): string {
 
 export function SalesforceStatusCard() {
   const readOnly = useReadOnly();
+  const tz = useTz();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery<SalesforceStatus>({
     queryKey: ["salesforce", "status"],
@@ -67,11 +69,7 @@ export function SalesforceStatusCard() {
         <dt className="text-muted-foreground">Token age</dt>
         <dd>{ageLabel(data.age_seconds)}</dd>
         <dt className="text-muted-foreground">Last success</dt>
-        <dd>
-          {data.last_success_at
-            ? new Date(data.last_success_at * 1000).toLocaleString()
-            : "—"}
-        </dd>
+        <dd>{formatInTz(data.last_success_at, tz)}</dd>
       </dl>
 
       {data.last_error && (

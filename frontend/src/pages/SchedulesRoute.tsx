@@ -12,6 +12,7 @@ import { ReadOnlyGate, useReadOnly } from "@/components/auth/ReadOnlyGate";
 import { ScheduleForm } from "@/components/schedules/ScheduleForm";
 import { useMe } from "@/hooks/useMe";
 import { describeSchedule, parseCron } from "@/lib/cron";
+import { formatInTz } from "@/lib/datetime";
 import { cn } from "@/lib/cn";
 
 export function SchedulesRoute() {
@@ -129,7 +130,7 @@ function SchedulesInner() {
                   {s.recipients.length > 2 && ` +${s.recipients.length - 2}`}
                 </td>
                 <td className="px-3 py-2 text-xs text-muted-foreground">
-                  {s.last_run_at?.slice(0, 19).replace("T", " ") || "—"}
+                  {formatInTz(s.last_run_at, tz)}
                 </td>
                 <td className="px-3 py-2">
                   <button

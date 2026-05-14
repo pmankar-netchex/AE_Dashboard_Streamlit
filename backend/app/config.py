@@ -59,8 +59,10 @@ class Settings(BaseSettings):
         default="AE Dashboard", validation_alias="SENDGRID_FROM_NAME"
     )
 
-    # Scheduler
-    scheduler_tz: str = Field(default="America/Chicago", validation_alias="SCHEDULER_TZ")
+    # Scheduler — Central Time by default; override with SCHEDULER_TZ.
+    scheduler_tz: str = Field(
+        default="America/Chicago", validation_alias="SCHEDULER_TZ"
+    )
 
     # CORS / internal
     ui_origin: str = Field(default="http://localhost:5173", validation_alias="UI_ORIGIN")

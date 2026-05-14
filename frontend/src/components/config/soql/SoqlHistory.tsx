@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { type SoqlHistoryRow, getSoqlHistory } from "@/api/soql";
+import { formatInTz, useTz } from "@/lib/datetime";
 
 export function SoqlHistory({ colId }: { colId: string }) {
+  const tz = useTz();
   const { data, isLoading } = useQuery<SoqlHistoryRow[]>({
     queryKey: ["soql", colId, "history"],
     queryFn: () => getSoqlHistory(colId),
@@ -25,7 +27,7 @@ export function SoqlHistory({ colId }: { colId: string }) {
       {data.map((row) => (
         <li key={row.version} className="rounded-md border border-border px-2 py-2 text-xs">
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>{row.saved_at || row.version}</span>
+            <span>{formatInTz(row.saved_at || row.version, tz)}</span>
             {row.saved_by && <span>by {row.saved_by}</span>}
           </div>
           <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[11px]">
