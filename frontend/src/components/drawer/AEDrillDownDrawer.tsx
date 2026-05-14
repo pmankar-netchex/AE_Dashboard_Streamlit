@@ -2,7 +2,6 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useFilters } from "@/hooks/useFilters";
 import { useAeDetail, useColumnMeta } from "@/hooks/useDashboard";
-import { KpiCard } from "@/components/dashboard/KpiCard";
 import { fmt } from "@/lib/formatters";
 
 export function AEDrillDownDrawer() {
@@ -53,17 +52,6 @@ export function AEDrillDownDrawer() {
 
             {detail.data && (
               <>
-                <section>
-                  <h3 className="mb-2 text-sm font-medium text-muted-foreground">
-                    KPIs
-                  </h3>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {[...detail.data.kpi_row_1, ...detail.data.kpi_row_2].map((k) => (
-                      <KpiCard key={`d-${k.col_id}`} kpi={k} />
-                    ))}
-                  </div>
-                </section>
-
                 <section>
                   <h3 className="mb-2 text-sm font-medium text-muted-foreground">
                     Source Breakdown

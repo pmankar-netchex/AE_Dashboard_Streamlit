@@ -1,43 +1,159 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Activity, BarChart3, Mail, Settings } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  FileBarChart,
+  Flame,
+  LayoutDashboard,
+  type LucideIcon,
+  Mail,
+  Megaphone,
+  Settings,
+  Target,
+  Users2,
+  Zap,
+} from "lucide-react";
+import { useUiStore } from "@/stores/uiStore";
+import { SECTION_DEFS } from "@/lib/sections";
 import { cn } from "@/lib/cn";
 
-const NAV = [
-  { to: "/dashboard", label: "Dashboard", Icon: BarChart3 },
+interface Entry {
+  to: string;
+  label: string;
+  Icon: LucideIcon;
+}
+
+const TOP_NAV: Entry[] = [
+  { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { to: "/schedules", label: "Reports", Icon: Mail },
   { to: "/config", label: "Config", Icon: Settings },
   { to: "/audit", label: "Activity", Icon: Activity },
-] as const;
+];
+
+const SECTION_ICONS: Record<string, LucideIcon> = {
+  "pipeline-quota": Target,
+  "self-gen": Zap,
+  sdr: Users2,
+  channel: Users2,
+  marketing: Megaphone,
+};
+
+const DASHBOARD_SUBNAV: Entry[] = [
+  { to: "/dashboard/summary", label: "Summary", Icon: BarChart3 },
+  ...SECTION_DEFS.map((s) => ({
+    to: `/dashboard/section/${s.slug}`,
+    label: s.label,
+    Icon: SECTION_ICONS[s.slug] ?? BarChart3,
+  })),
+  { to: "/dashboard/charts", label: "Charts", Icon: FileBarChart },
+  { to: "/dashboard/heatmap", label: "Heatmap", Icon: Flame },
+];
 
 export function SideNav() {
   const { location } = useRouterState();
+  const collapsed = useUiStore((s) => s.sidebarCollapsed);
+  const toggle = useUiStore((s) => s.toggleSidebar);
+
+  const dashboardActive = location.pathname.startsWith("/dashboard");
+
   return (
-    <aside className="flex w-56 flex-col border-r border-border bg-muted/30">
-      <div className="flex h-14 items-center px-4 text-sm font-semibold">
-        AE Dashboard
+    <aside
+      className={cn(
+        "flex flex-col border-r border-border bg-muted/30 transition-[width] duration-150",
+        collapsed ? "w-14" : "w-60",
+      )}
+    >
+      <div
+        className={cn(
+          "flex h-14 items-center border-b border-border/60",
+          collapsed ? "justify-center" : "justify-between px-3",
+        )}
+      >
+        {!collapsed && <span className="text-sm font-semibold">AE Dashboard</span>}
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+        </button>
       </div>
-      <nav className="flex-1 px-2 py-2">
-        {NAV.map(({ to, label, Icon }) => {
+      <nav className="flex-1 overflow-y-auto px-2 py-2">
+        {TOP_NAV.map(({ to, label, Icon }) => {
           const active =
-            location.pathname === to ||
-            location.pathname.startsWith(to + "/");
+            location.pathname === to || location.pathname.startsWith(to + "/");
           return (
-            <Link
-              key={to}
-              to={to}
-              className={cn(
-                "mb-1 flex items-center gap-2 rounded-md px-3 py-2 text-sm",
-                active
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            <div key={to} className="mb-0.5">
+              <NavLink
+                to={to}
+                label={label}
+                Icon={Icon}
+                active={active}
+                collapsed={collapsed}
+              />
+              {!collapsed && to === "/dashboard" && dashboardActive && (
+                <ul className="my-1 ml-3 space-y-0.5 border-l border-border/50 pl-2">
+                  {DASHBOARD_SUBNAV.map((sub) => {
+                    const subActive = location.pathname.startsWith(sub.to);
+                    return (
+                      <li key={sub.to}>
+                        <Link
+                          to={sub.to}
+                          search={(prev) => prev}
+                          className={cn(
+                            "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs",
+                            subActive
+                              ? "bg-accent font-medium text-foreground"
+                              : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                          )}
+                        >
+                          <sub.Icon className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{sub.label}</span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </Link>
+            </div>
           );
         })}
       </nav>
     </aside>
+  );
+}
+
+function NavLink({
+  to,
+  label,
+  Icon,
+  active,
+  collapsed,
+}: {
+  to: string;
+  label: string;
+  Icon: LucideIcon;
+  active: boolean;
+  collapsed: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      search={(prev) => prev}
+      title={collapsed ? label : undefined}
+      className={cn(
+        "flex items-center gap-2 rounded-md text-sm",
+        collapsed ? "justify-center px-1.5 py-2" : "px-3 py-2",
+        active
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      {!collapsed && <span className="truncate">{label}</span>}
+    </Link>
   );
 }

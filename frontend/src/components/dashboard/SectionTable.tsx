@@ -2,8 +2,7 @@ import {
   type ColumnDef,
   createColumnHelper,
 } from "@tanstack/react-table";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { AERow, ColumnMeta } from "@/types/dashboard";
 import { DataTable } from "@/components/tables/DataTable";
 import { useFilters } from "@/hooks/useFilters";
@@ -16,13 +15,13 @@ interface Props {
   section: { key: string; display_name: string };
   columns: ColumnMeta[];
   rows: AERow[];
-  defaultOpen?: boolean;
+  /** Show a section title above the table. Set false to render bare. */
+  showHeader?: boolean;
 }
 
 const helper = createColumnHelper<AERow>();
 
-export function SectionTable({ section, columns, rows, defaultOpen }: Props) {
-  const [open, setOpen] = useState(!!defaultOpen);
+export function SectionTable({ section, columns, rows, showHeader = true }: Props) {
   const { set } = useFilters();
 
   const numericCols = columns.filter((c) => !c.blocked);
@@ -65,13 +64,11 @@ export function SectionTable({ section, columns, rows, defaultOpen }: Props) {
             {c.getValue() as string}
           </button>
         ),
-        enableColumnFilter: true,
       }),
       helper.accessor("ae_manager", {
         id: "manager",
         header: "AE Manager",
         cell: (c) => <span className="text-muted-foreground">{c.getValue() as string}</span>,
-        enableColumnFilter: true,
       }),
     ];
 
@@ -105,35 +102,23 @@ export function SectionTable({ section, columns, rows, defaultOpen }: Props) {
   }, [numericCols, norms, idxByRow, set]);
 
   return (
-    <section className="rounded-lg border border-border">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm font-medium hover:bg-accent"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span className="flex items-center gap-2">
-          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          {section.display_name}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {numericCols.length} columns
-        </span>
-      </button>
-      {open && (
-        <div className="border-t border-border p-3">
-          <DataTable
-            data={rows}
-            columns={tableColumns}
-            emptyMessage="No data."
-            enableGlobalSearch
-            enableColumnFilters={false}
-            pageSizes={[10, 25, 50, 100]}
-            initialPageSize={25}
-            stickyFirstColumn
-          />
-        </div>
+    <section className="space-y-2">
+      {showHeader && (
+        <header className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">{section.display_name}</h2>
+          <p className="text-xs text-muted-foreground">{numericCols.length} columns</p>
+        </header>
       )}
+      <DataTable
+        data={rows}
+        columns={tableColumns}
+        emptyMessage="No data."
+        enableGlobalSearch
+        enableColumnFilters={false}
+        pageSizes={[10, 25, 50, 100]}
+        initialPageSize={25}
+        stickyFirstColumn
+      />
     </section>
   );
 }

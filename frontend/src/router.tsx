@@ -8,6 +8,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { DashboardRoute } from "@/pages/DashboardRoute";
 import { DashboardChartsRoute } from "@/pages/DashboardChartsRoute";
 import { DashboardHeatmapRoute } from "@/pages/DashboardHeatmapRoute";
+import { DashboardSectionRoute } from "@/pages/DashboardSectionRoute";
 import { DashboardSummaryRoute } from "@/pages/DashboardSummaryRoute";
 import type { FilterSearch } from "@/lib/filterParams";
 
@@ -67,6 +68,12 @@ const dashboardHeatmapRoute = createRoute({
   component: DashboardHeatmapRoute,
 });
 
+const dashboardSectionRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: "section/$slug",
+  component: DashboardSectionRoute,
+});
+
 const schedulesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/schedules",
@@ -114,6 +121,7 @@ const routeTree = rootRoute.addChildren([
     dashboardSummaryRoute,
     dashboardChartsRoute,
     dashboardHeatmapRoute,
+    dashboardSectionRoute,
   ]),
   schedulesRoute,
   configRoute.addChildren([

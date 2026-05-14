@@ -158,7 +158,7 @@ export function AllSourceSummary({ rows, sources }: Props) {
         columns={columns}
         emptyMessage="No AEs match the current filters."
         enableGlobalSearch
-        enableColumnFilters
+        enableColumnFilters={false}
         pageSizes={[10, 25, 50, 100]}
         initialPageSize={25}
         stickyFirstColumn

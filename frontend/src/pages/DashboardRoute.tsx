@@ -1,5 +1,4 @@
 import { Outlet } from "@tanstack/react-router";
-import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { KpiRow } from "@/components/dashboard/KpiRow";
 import { AEDrillDownDrawer } from "@/components/drawer/AEDrillDownDrawer";
 import { FilterBar } from "@/components/filters/FilterBar";
@@ -23,8 +22,6 @@ export function DashboardRoute() {
         {dash.data && (
           <KpiRow row1={dash.data.kpi_row_1} row2={dash.data.kpi_row_2} />
         )}
-
-        <DashboardTabs />
 
         <Outlet />
       </div>

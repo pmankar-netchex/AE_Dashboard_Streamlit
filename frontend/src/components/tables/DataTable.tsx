@@ -86,8 +86,8 @@ export function DataTable<TRow>({
         </div>
       )}
 
-      <div className="overflow-auto rounded-md border border-border">
-        <table className="min-w-full border-separate border-spacing-0 text-sm">
+      <div className="max-w-full overflow-x-auto overflow-y-visible rounded-md border border-border">
+        <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
           <thead className="sticky top-0 z-20 bg-muted/70 backdrop-blur">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
