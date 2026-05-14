@@ -23,17 +23,18 @@ CURRENCY_COLS = {
     "S1-COL-C", "S1-COL-D", "S1-COL-F", "S1-COL-G",
     "S1-COL-I", "S1-COL-J", "S1-COL-L", "S1-COL-M", "S1-COL-N",
     "S6-COL-AF", "S6-COL-AH", "S6-COL-AJ", "S6-COL-AL",
+    "S6-COL-AM", "S6-COL-AN", "S6-COL-AO", "S6-COL-AP",
 }
 PERCENT_COLS = {"S1-COL-E", "S1-COL-H"}
 LOWER_IS_BETTER = {"S1-COL-N"}
 
 ALL_SOURCE_SUMMARY = [
-    ("Self Gen",  "S6-COL-AF", None),
-    ("SDR",       "S6-COL-AH", None),
-    ("Channel",   "S6-COL-AJ", None),
-    ("Marketing", "S6-COL-AL", None),
+    ("Self Gen",  "S6-COL-AF", "S6-COL-AM"),
+    ("SDR",       "S6-COL-AH", "S6-COL-AN"),
+    ("Channel",   "S6-COL-AJ", "S6-COL-AO"),
+    ("Marketing", "S6-COL-AL", "S6-COL-AP"),
 ]
-TOTAL_BOOKINGS_COL = "S1-COL-M"  # Total Closed Won (Period) — only period-based bookings query in production
+TOTAL_BOOKINGS_COL = "S1-COL-M"  # Total Closed Won (Period)
 
 def apply_custom_css():
     st.markdown("""
@@ -165,9 +166,8 @@ def display_all_source_summary(df: pd.DataFrame):
 
     with st.expander("**All Source Summary**", expanded=True):
         st.caption(
-            "Totals first, then split-credited Pipeline $ by source. "
-            "Bookings-by-source columns are placeholders — no source-attributed "
-            "closed-won query exists in production yet."
+            "Totals first, then split-credited Pipeline $ and Bookings $ by source. "
+            "Period applies via Opportunity CloseDate (Bookings) and CreatedDate (Pipeline) per the SOQL registry."
         )
         styler = summary.style.format(format_dict, na_rep="—")
         for col_name in heatmap_cols:
