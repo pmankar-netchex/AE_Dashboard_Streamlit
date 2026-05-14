@@ -1,5 +1,4 @@
 import { Outlet } from "@tanstack/react-router";
-import { ConfigTabs } from "@/components/config/ConfigTabs";
 
 export function ConfigRoute() {
   return (
@@ -11,7 +10,6 @@ export function ConfigRoute() {
           edit; user role is view-only.
         </p>
       </header>
-      <ConfigTabs />
       <Outlet />
     </div>
   );
