@@ -106,13 +106,18 @@ export function SoqlList({ entries, selected, onSelect }: Props) {
                             active && "bg-accent",
                           )}
                         >
-                          <span className="flex min-w-0 flex-col">
+                          <span className="flex min-w-0 flex-col gap-0.5">
                             <span className="truncate font-medium text-foreground">
                               {e.display_name}
                             </span>
                             <span className="truncate font-mono text-[10px] text-muted-foreground">
                               {e.col_id}
                             </span>
+                            {e.description && (
+                              <span className="line-clamp-2 text-[10px] text-muted-foreground/80">
+                                {e.description}
+                              </span>
+                            )}
                           </span>
                           <span className="flex shrink-0 gap-1">
                             {e.has_override && (

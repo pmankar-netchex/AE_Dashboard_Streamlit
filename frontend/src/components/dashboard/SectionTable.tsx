@@ -5,6 +5,7 @@ import {
 import { useMemo } from "react";
 import type { AERow, ColumnMeta } from "@/types/dashboard";
 import { DataTable } from "@/components/tables/DataTable";
+import { InfoTooltip } from "@/components/ui/InfoTooltip";
 import { useFilters } from "@/hooks/useFilters";
 import { LOWER_IS_BETTER } from "@/lib/columns";
 import { fmt } from "@/lib/formatters";
@@ -77,7 +78,14 @@ export function SectionTable({ section, columns, rows, showHeader = true }: Prop
         helper.accessor((r) => r.values[col.col_id] ?? null, {
           id: col.col_id,
           header: () => (
-            <span title={col.description}>{col.display_name}</span>
+            <InfoTooltip
+              title={col.display_name}
+              description={col.description || col.aggregation || col.col_id}
+            >
+              <span className="cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2">
+                {col.display_name}
+              </span>
+            </InfoTooltip>
           ),
           cell: (c) => {
             if (col.blocked) {
@@ -118,6 +126,7 @@ export function SectionTable({ section, columns, rows, showHeader = true }: Prop
         pageSizes={[10, 25, 50, 100]}
         initialPageSize={25}
         stickyFirstColumn
+        exportFilename={`section-${section.key.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
       />
     </section>
   );

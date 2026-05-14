@@ -21,6 +21,7 @@ export function DashboardSummaryRoute() {
     <AllSourceSummary
       rows={dash.data.all_source_summary}
       sources={cols.data.all_source_summary}
+      columnMeta={cols.data.columns}
     />
   );
 }

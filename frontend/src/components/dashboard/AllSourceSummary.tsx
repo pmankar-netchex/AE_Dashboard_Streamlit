@@ -2,17 +2,43 @@ import {
   type ColumnDef,
   createColumnHelper,
 } from "@tanstack/react-table";
-import { useMemo } from "react";
-import type { AllSourceSummaryRow, AllSourceSummarySpec } from "@/types/dashboard";
+import { type ReactNode, useMemo } from "react";
+import type {
+  AllSourceSummaryRow,
+  AllSourceSummarySpec,
+  ColumnMeta,
+} from "@/types/dashboard";
 import { useFilters } from "@/hooks/useFilters";
 import { fmt } from "@/lib/formatters";
 import { lightHeatmapColor, normalizeColumn } from "@/lib/heatmap";
 import { DataTable } from "@/components/tables/DataTable";
+import { InfoTooltip } from "@/components/ui/InfoTooltip";
 import { cn } from "@/lib/cn";
 
 interface Props {
   rows: AllSourceSummaryRow[];
   sources: AllSourceSummarySpec[];
+  /** Full column metadata — used to surface descriptions on the source
+   *  Pipeline/Bookings sub-headers. */
+  columnMeta?: ColumnMeta[];
+}
+
+function withTooltip(
+  meta: ColumnMeta | undefined,
+  fallback: string,
+  node: ReactNode,
+): ReactNode {
+  if (!meta) return node;
+  return (
+    <InfoTooltip
+      title={meta.display_name || fallback}
+      description={meta.description || meta.aggregation || meta.col_id}
+    >
+      <span className="cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2">
+        {node}
+      </span>
+    </InfoTooltip>
+  );
 }
 
 const helper = createColumnHelper<AllSourceSummaryRow>();
@@ -34,8 +60,13 @@ function HeatedNumber({
   );
 }
 
-export function AllSourceSummary({ rows, sources }: Props) {
+export function AllSourceSummary({ rows, sources, columnMeta = [] }: Props) {
   const { set } = useFilters();
+  const metaById = useMemo(() => {
+    const m = new Map<string, ColumnMeta>();
+    for (const c of columnMeta) m.set(c.col_id, c);
+    return m;
+  }, [columnMeta]);
 
   const norms = useMemo(() => {
     const tp = normalizeColumn(rows.map((r) => r.total_pipeline));
@@ -61,7 +92,12 @@ export function AllSourceSummary({ rows, sources }: Props) {
         columns: [
           helper.accessor((r) => r.sources[i]?.pipeline ?? null, {
             id: `${s.label}-p`,
-            header: "Pipeline",
+            header: () =>
+              withTooltip(
+                metaById.get(s.pipeline_col),
+                `${s.label} Pipeline`,
+                "Pipeline",
+              ),
             cell: (c) => {
               const rowIdx = idxByRow.get(c.row.original.ae_id || c.row.original.ae_name) ?? 0;
               return (
@@ -72,7 +108,12 @@ export function AllSourceSummary({ rows, sources }: Props) {
           }),
           helper.accessor((r) => r.sources[i]?.bookings ?? null, {
             id: `${s.label}-b`,
-            header: "Bookings",
+            header: () =>
+              withTooltip(
+                metaById.get(s.bookings_col),
+                `${s.label} Bookings`,
+                "Bookings",
+              ),
             cell: (c) => {
               const rowIdx = idxByRow.get(c.row.original.ae_id || c.row.original.ae_name) ?? 0;
               return (
@@ -85,6 +126,7 @@ export function AllSourceSummary({ rows, sources }: Props) {
       }),
     );
 
+    void metaById; // referenced via withTooltip
     return [
       helper.accessor("ae_name", {
         id: "ae",
@@ -119,7 +161,16 @@ export function AllSourceSummary({ rows, sources }: Props) {
         columns: [
           helper.accessor("total_pipeline", {
             id: "total_pipeline",
-            header: "Pipeline",
+            header: () => (
+              <InfoTooltip
+                title="Total Pipeline (Period)"
+                description="Sum of Self-Gen, SDR, Channel, and Marketing Pipeline $ for this AE in the selected period."
+              >
+                <span className="cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2">
+                  Pipeline
+                </span>
+              </InfoTooltip>
+            ),
             cell: (c) => {
               const rowIdx = idxByRow.get(c.row.original.ae_id || c.row.original.ae_name) ?? 0;
               return (
@@ -130,7 +181,12 @@ export function AllSourceSummary({ rows, sources }: Props) {
           }),
           helper.accessor("total_bookings", {
             id: "total_bookings",
-            header: "Bookings",
+            header: () =>
+              withTooltip(
+                metaById.get("S1-COL-M"),
+                "Total Bookings",
+                "Bookings",
+              ),
             cell: (c) => {
               const rowIdx = idxByRow.get(c.row.original.ae_id || c.row.original.ae_name) ?? 0;
               return (
@@ -162,6 +218,7 @@ export function AllSourceSummary({ rows, sources }: Props) {
         pageSizes={[10, 25, 50, 100]}
         initialPageSize={25}
         stickyFirstColumn
+        exportFilename="all-source-summary"
       />
     </section>
   );

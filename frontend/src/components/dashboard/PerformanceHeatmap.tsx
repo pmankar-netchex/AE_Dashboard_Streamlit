@@ -2,6 +2,7 @@ import type { AERow, ColumnMeta } from "@/types/dashboard";
 import { rdylgnFor } from "@/lib/heatmap";
 import { fmt } from "@/lib/formatters";
 import { LOWER_IS_BETTER } from "@/lib/columns";
+import { InfoTooltip } from "@/components/ui/InfoTooltip";
 
 interface Props {
   rows: AERow[];
@@ -10,7 +11,6 @@ interface Props {
 
 export function PerformanceHeatmap({ rows, columns }: Props) {
   const numericCols = columns.filter((c) => !c.blocked && !c.computed);
-  // Normalize per column over the max value (mirrors dashboard_ui display_heatmap).
   const maxByCol: Record<string, number> = {};
   for (const c of numericCols) {
     let max = 0;
@@ -34,27 +34,30 @@ export function PerformanceHeatmap({ rows, columns }: Props) {
       <header className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-medium">Performance Heatmap</h3>
         <p className="text-xs text-muted-foreground">
-          Per-column normalized; red→yellow→green.
+          Per-column normalized; red→yellow→green. Hover a column header for the full name.
         </p>
       </header>
-      <div className="overflow-auto">
+      <div className="overflow-x-auto">
         <div
           className="grid"
           style={{
-            gridTemplateColumns: `200px repeat(${numericCols.length}, minmax(64px, 1fr))`,
+            gridTemplateColumns: `200px repeat(${numericCols.length}, minmax(72px, 1fr))`,
           }}
         >
           <div className="sticky left-0 z-10 bg-background px-2 py-1.5 text-xs font-medium text-muted-foreground">
             AE
           </div>
           {numericCols.map((c) => (
-            <div
+            <InfoTooltip
               key={c.col_id}
-              className="truncate px-1 py-1.5 text-center text-[10px] font-medium text-muted-foreground"
               title={c.display_name}
+              description={c.description || c.aggregation || c.col_id}
+              side="bottom"
             >
-              {c.col_id.replace(/^S\d+-COL-/, "")}
-            </div>
+              <div className="cursor-help truncate px-1 py-1.5 text-center text-[10px] font-medium text-muted-foreground">
+                {abbreviate(c.display_name)}
+              </div>
+            </InfoTooltip>
           ))}
           {rows.map((r) => (
             <FragmentRow key={r.ae_id} row={r} cols={numericCols} maxByCol={maxByCol} />
@@ -91,19 +94,43 @@ function FragmentRow({
           norm = LOWER_IS_BETTER.has(c.col_id) ? 1 - raw : raw;
         }
         return (
-          <div
+          <InfoTooltip
             key={c.col_id}
-            className="px-1 py-1.5 text-center text-[10px] tabular-nums text-white"
-            style={{
-              backgroundColor: rdylgnFor(norm),
-              color: norm == null || norm < 0.6 ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.85)",
-            }}
-            title={`${row.ae_name} • ${c.display_name} = ${fmt(v, c.format)}`}
+            title={`${row.ae_name} — ${c.display_name}`}
+            description={`${fmt(v, c.format)}${c.description ? "\n" + c.description : ""}`}
+            side="top"
           >
-            {fmt(v, c.format)}
-          </div>
+            <div
+              className="cursor-help px-1 py-1.5 text-center text-[10px] tabular-nums"
+              style={{
+                backgroundColor: rdylgnFor(norm),
+                color:
+                  norm == null || norm < 0.6
+                    ? "rgba(255,255,255,0.95)"
+                    : "rgba(0,0,0,0.85)",
+              }}
+            >
+              {fmt(v, c.format)}
+            </div>
+          </InfoTooltip>
         );
       })}
     </>
   );
+}
+
+/**
+ * Compact header label for the heatmap grid. Tries to keep things distinct
+ * (uses 2-3 chars from each significant word) without leaning on the cryptic
+ * col_id suffix. Falls back to the trimmed col_id when display_name is empty.
+ */
+function abbreviate(displayName: string): string {
+  if (!displayName) return "—";
+  const cleaned = displayName.replace(/\([^)]*\)/g, "").trim();
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 6);
+  return parts
+    .slice(0, 3)
+    .map((p, i) => (i === 0 ? p.slice(0, 3) : p.slice(0, 2)))
+    .join(" ");
 }
