@@ -6,7 +6,7 @@
     "appNamePrefix":         { "value": "aedash" },
     "acrSku":                { "value": "Basic" },
 
-    "sendgridFromEmail":     { "value": "dashboard@example.com" },
+    "sendgridFromEmail":     { "value": "dashboard@netchexonline.com" },
     "bootstrapAdminEmails":  { "value": "" },
     "sfLoginUrl":            { "value": "https://login.salesforce.com" },
     "schedulerTz":           { "value": "America/Chicago" },
