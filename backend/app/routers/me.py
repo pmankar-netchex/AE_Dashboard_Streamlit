@@ -14,8 +14,14 @@ def me(
     user: CurrentUser = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ) -> MeResponse:
+    # SOQL writes require BOTH the deployment-level ALLOW_PROD_QUERY_WRITES
+    # flag AND the current user being an admin. Surfacing this in /api/me
+    # means the UI doesn't show a Save button to non-admins that the
+    # require_admin route dep would then 403 — single source of truth.
     flags = MeFlags(
-        soql_writes_enabled=settings.allow_prod_query_writes,
+        soql_writes_enabled=(
+            user.role == "admin" and settings.allow_prod_query_writes
+        ),
         scheduler_tz=settings.scheduler_tz,
     )
     return MeResponse(email=user.email, role=user.role, source=user.source, flags=flags)

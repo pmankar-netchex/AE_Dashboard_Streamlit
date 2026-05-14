@@ -33,6 +33,9 @@ param maxReplicas int = 1
 param containerCpu string = '0.5'
 param containerMemory string = '1.0Gi'
 
+@description('Enables the SOQL-template write path. Writes still require an admin role at the API layer; this is a deployment-level kill switch on top of that.')
+param allowProdQueryWrites bool = true
+
 resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
   location: location
@@ -91,7 +94,7 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
               { name: 'INTERNAL_API_KEY', secretRef: 'internal-api-key' }
               { name: 'BOOTSTRAP_ADMIN_EMAILS', value: bootstrapAdminEmails }
               { name: 'SCHEDULER_TZ', value: schedulerTz }
-              { name: 'ALLOW_PROD_QUERY_WRITES', value: 'false' }
+              { name: 'ALLOW_PROD_QUERY_WRITES', value: allowProdQueryWrites ? 'true' : 'false' }
             ],
             empty(sendgridApiKey)
               ? []
