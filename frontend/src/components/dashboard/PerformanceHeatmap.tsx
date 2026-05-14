@@ -45,18 +45,26 @@ export function PerformanceHeatmap({ rows, columns }: Props) {
         <div
           className="grid gap-px bg-border"
           style={{
-            gridTemplateColumns: `200px repeat(${numericCols.length}, minmax(56px, 1fr))`,
+            gridTemplateColumns: `200px repeat(${numericCols.length}, minmax(40px, 1fr))`,
           }}
         >
-          {/* Header row */}
-          <div className="sticky left-0 z-10 bg-background px-2 py-2 text-xs font-medium text-muted-foreground">
+          {/* Header row — labels rotated 45° so the full name fits */}
+          <div className="sticky left-0 z-10 flex h-32 items-end bg-background px-2 pb-2 text-xs font-medium text-muted-foreground">
             AE
           </div>
           {numericCols.map((c) => (
             <Tooltip.Root key={`h-${c.col_id}`}>
               <Tooltip.Trigger asChild>
-                <div className="cursor-help truncate bg-background px-1 py-2 text-center text-[10px] font-medium text-muted-foreground">
-                  {abbreviate(c)}
+                <div className="flex h-32 cursor-help items-end justify-center bg-background">
+                  <span
+                    className="origin-bottom-left whitespace-nowrap text-[11px] text-muted-foreground"
+                    style={{
+                      transform: "rotate(-50deg) translateY(-2px)",
+                      transformOrigin: "left bottom",
+                    }}
+                  >
+                    {c.display_name}
+                  </span>
                 </div>
               </Tooltip.Trigger>
               <Tooltip.Portal>
@@ -108,8 +116,9 @@ function renderRow({
       {cols.map((c) => {
         const v = row.values[c.col_id];
         const max = maxByCol[c.col_id] || 1;
+        const hasValue = v != null && Number.isFinite(v);
         let norm: number | null = null;
-        if (v != null && Number.isFinite(v)) {
+        if (hasValue) {
           const raw = Math.min(1, Math.max(0, Math.abs(v as number) / max));
           norm = LOWER_IS_BETTER.has(c.col_id) ? 1 - raw : raw;
         }
@@ -118,7 +127,15 @@ function renderRow({
             <Tooltip.Trigger asChild>
               <div
                 className="h-8 cursor-help transition-[box-shadow] hover:shadow-[inset_0_0_0_2px_rgba(0,0,0,0.65)]"
-                style={{ backgroundColor: rdylgnFor(norm) }}
+                style={
+                  hasValue
+                    ? { backgroundColor: rdylgnFor(norm) }
+                    : {
+                        backgroundColor: "rgb(248,250,252)",
+                        backgroundImage:
+                          "repeating-linear-gradient(45deg, rgba(0,0,0,0) 0 5px, rgba(0,0,0,0.04) 5px 6px)",
+                      }
+                }
                 aria-label={`${row.ae_name} — ${c.display_name}: ${fmt(v, c.format)}`}
               />
             </Tooltip.Trigger>
@@ -132,7 +149,7 @@ function renderRow({
                   {row.ae_name} — {c.display_name}
                 </div>
                 <div className="mt-1 font-mono text-sm text-foreground">
-                  {fmt(v, c.format)}
+                  {hasValue ? fmt(v, c.format) : "no data"}
                 </div>
                 {c.description && (
                   <div className="mt-1 leading-snug text-muted-foreground">
@@ -165,39 +182,17 @@ function Legend() {
         ))}
       </div>
       <span>Better</span>
+      <span className="ml-2 inline-flex items-center gap-1">
+        <span
+          className="inline-block h-3 w-3 rounded-sm border border-border"
+          style={{
+            backgroundColor: "rgb(248,250,252)",
+            backgroundImage:
+              "repeating-linear-gradient(45deg, rgba(0,0,0,0) 0 4px, rgba(0,0,0,0.04) 4px 5px)",
+          }}
+        />
+        <span>No data</span>
+      </span>
     </div>
   );
-}
-
-/**
- * Compact, unique header label for the heatmap grid.
- *
- * Preserves a period marker (YTD / MTD / "This Month" / "Next Month") so
- * "Quota (YTD)" and "Quota (MTD)" don't both collapse to "Quota".
- */
-function abbreviate(c: ColumnMeta): string {
-  const display = c.display_name || c.col_id;
-  const periodMatch = display.match(/\(([^)]+)\)/);
-  const cleaned = display.replace(/\([^)]*\)/g, "").trim();
-  const parts = cleaned.split(/\s+/).filter(Boolean);
-  const base =
-    parts.length === 1
-      ? parts[0].slice(0, 6)
-      : parts
-          .slice(0, 2)
-          .map((p, i) => (i === 0 ? p.slice(0, 4) : p.slice(0, 3)))
-          .join(" ");
-  if (periodMatch) {
-    return `${base} ${shortPeriod(periodMatch[1])}`;
-  }
-  return base;
-}
-
-function shortPeriod(p: string): string {
-  const lower = p.toLowerCase();
-  if (lower === "ytd" || lower === "mtd" || lower === "qtd") return lower.toUpperCase();
-  if (lower.includes("this month")) return "TM";
-  if (lower.includes("next month")) return "NM";
-  if (lower.includes("last month")) return "LM";
-  return p.slice(0, 3);
 }
