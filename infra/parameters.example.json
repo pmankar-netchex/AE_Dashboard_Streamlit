@@ -11,10 +11,12 @@
     "sfLoginUrl":            { "value": "https://login.salesforce.com" },
     "schedulerTz":           { "value": "America/Chicago" },
 
-    "sfClientId":      { "value": "" },
-    "sfClientSecret":  { "value": "" },
-    "sendgridApiKey":  { "value": "" },
-    "internalApiKey":  { "value": "" },
-    "entraClientId":   { "value": "" }
+    "entraClientId":         { "value": "5fffa614-3447-439b-88e1-f52985fab497" },
+
+    "sfClientId":         { "value": "" },
+    "sfClientSecret":     { "value": "" },
+    "sendgridApiKey":     { "value": "" },
+    "internalApiKey":     { "value": "" },
+    "entraClientSecret":  { "value": "" }
   }
 }

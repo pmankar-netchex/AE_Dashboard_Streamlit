@@ -16,6 +16,9 @@ param internalApiKey string
 
 @description('Entra App Registration client ID for Easy Auth. Empty disables Easy Auth (e.g. for first deploy before app registration exists).')
 param entraClientId string = ''
+@secure()
+@description('Entra App Registration client SECRET. Required when entraClientId is set; Easy Auth needs the server-side OIDC code-exchange flow.')
+param entraClientSecret string = ''
 param tenantId string = subscription().tenantId
 
 @minValue(0)
@@ -28,6 +31,8 @@ param maxReplicas int = 3
 param containerCpu string = '0.25'
 param containerMemory string = '0.5Gi'
 
+var easyAuthEnabled = !empty(entraClientId) && !empty(entraClientSecret)
+
 resource uiApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
   location: location
@@ -37,10 +42,15 @@ resource uiApp 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     managedEnvironmentId: managedEnvironmentId
     configuration: {
-      secrets: [
-        { name: 'acr-password', value: acrPassword }
-        { name: 'internal-api-key', value: internalApiKey }
-      ]
+      secrets: union(
+        [
+          { name: 'acr-password', value: acrPassword }
+          { name: 'internal-api-key', value: internalApiKey }
+        ],
+        easyAuthEnabled
+          ? [ { name: 'entra-client-secret', value: entraClientSecret } ]
+          : []
+      )
       ingress: {
         external: true
         targetPort: 80
@@ -77,10 +87,9 @@ resource uiApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// Easy Auth (Entra ID). Only created when entraClientId is provided —
-// the user's plan is to add app registration as the last step, so the
-// initial deploy runs without it and re-deploys flip this on.
-resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (!empty(entraClientId)) {
+// Easy Auth (Entra ID). Only created when both entraClientId AND
+// entraClientSecret are provided.
+resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (easyAuthEnabled) {
   parent: uiApp
   name: 'current'
   properties: {
@@ -97,6 +106,7 @@ resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (!
         registration: {
           openIdIssuer: 'https://login.microsoftonline.com/${tenantId}/v2.0'
           clientId: entraClientId
+          clientSecretSettingName: 'entra-client-secret'
         }
         validation: {
           allowedAudiences: [
@@ -109,6 +119,7 @@ resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (!
       tokenStore: {
         enabled: true
       }
+      preserveUrlFragmentsForLogins: false
     }
   }
 }
@@ -116,3 +127,4 @@ resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (!
 output name string = uiApp.name
 output fqdn string = uiApp.properties.configuration.ingress.fqdn
 output principalId string = uiApp.identity.principalId
+output easyAuthEnabled bool = easyAuthEnabled

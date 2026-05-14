@@ -30,7 +30,7 @@ param keyVaultName string = ''
 param storageAccountName string = ''
 
 @description('Entra App Registration client ID for Easy Auth on UI. Leave empty to disable Easy Auth (first deploy before app registration exists).')
-param entraClientId string = ''
+param entraClientId string = '5fffa614-3447-439b-88e1-f52985fab497'
 
 @description('Sender email for SendGrid.')
 param sendgridFromEmail string = 'dashboard@example.com'
@@ -64,6 +64,10 @@ param sendgridApiKey string = ''
 @secure()
 @description('Internal API key shared between UI and API for defense-in-depth.')
 param internalApiKey string = ''
+
+@secure()
+@description('Entra App Registration client SECRET. Required when entraClientId is set so Easy Auth can complete the OIDC code exchange.')
+param entraClientSecret string = ''
 
 // ----- Derived names -----
 
@@ -162,6 +166,7 @@ module uiApp 'modules/containerApp-ui.bicep' = {
     apiHost: apiApp.outputs.fqdn
     internalApiKey: internalApiKey
     entraClientId: entraClientId
+    entraClientSecret: entraClientSecret
   }
 }
 
@@ -183,6 +188,10 @@ output apiAppName string = apiApp.outputs.name
 output apiAppFqdn string = apiApp.outputs.fqdn
 output uiAppName string = uiApp.outputs.name
 output uiAppFqdn string = uiApp.outputs.fqdn
+output uiEasyAuthEnabled bool = uiApp.outputs.easyAuthEnabled
 output acrLoginServer string = acr.outputs.loginServer
 output storageAccountName string = storage.outputs.name
 output keyVaultName string = keyVault.outputs.name
+// The redirect URI you must register on the Entra App Registration
+// (Authentication blade → Add a web platform → Redirect URI).
+output uiRedirectUri string = 'https://${uiApp.outputs.fqdn}/.auth/login/aad/callback'
