@@ -1,4 +1,22 @@
-# AE Ultimate Dashboard - Streamlit + SOQL
+# AE Performance Dashboard
+
+> **Overhaul in progress on `overhaul/v2`.** The Streamlit app is being replaced
+> by a FastAPI backend + React/Tailwind/TanStack frontend with Entra ID auth,
+> client-credentials Salesforce flow, admin/user roles, and scheduled email
+> digests. See `/Users/apple/.claude/plans/we-are-going-to-fancy-lagoon.md`.
+>
+> New layout:
+> - `backend/` — FastAPI service (`cd backend && pip install -e ".[dev]" && uvicorn app.main:app --reload`)
+> - `frontend/` — Vite + React (`cd frontend && npm install && npm run dev`)
+> - `infra/` — Bicep for Azure Container Apps deployment
+>
+> The legacy Streamlit app (`streamlit_dashboard.py`, `src/`) is preserved
+> on `overhaul/v2` until cutover (milestone M15) and remains the production
+> code on `main` for now.
+
+---
+
+## Legacy Streamlit app (current production)
 
 A Streamlit dashboard that replicates your Excel AE Dashboard using direct SOQL queries to Salesforce.
 
