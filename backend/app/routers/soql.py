@@ -14,6 +14,7 @@ from app.schemas.soql import (
     SoqlUpdateIn,
 )
 from app.services import soql_service
+from app.services.audit_service import get_audit_service
 from app.services.salesforce_client import get_sf_client
 
 router = APIRouter(prefix="/api/soql", tags=["soql"])
@@ -42,6 +43,9 @@ def update_one(
         raise HTTPException(404, detail=f"unknown col_id: {col_id}")
     except soql_store.SoqlWriteForbidden as exc:
         raise HTTPException(status_code=423, detail=str(exc))
+    get_audit_service().write(
+        actor=user.email, entity="soql", action="update", target=col_id
+    )
     entry = soql_service.get_entry(col_id)
     assert entry is not None
     return entry

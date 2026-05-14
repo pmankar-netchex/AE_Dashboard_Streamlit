@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.errors import register_exception_handlers
 from app.logging_setup import configure_logging
 from app.routers import (
+    audit,
     columns,
     dashboard,
     filters,
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(soql.router)
     app.include_router(users.router)
+    app.include_router(audit.router)
 
     return app
 

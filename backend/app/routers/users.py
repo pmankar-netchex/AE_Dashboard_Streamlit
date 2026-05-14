@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.deps import get_current_user, require_admin
 from app.schemas.common import CurrentUser
 from app.schemas.users import UserCreateIn, UserOut, UserUpdateIn
+from app.services.audit_service import get_audit_service
 from app.services.user_service import UserRow, get_user_service
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -39,6 +40,13 @@ def create_user(
         UserRow(email=email, role=body.role, is_active=body.is_active),
         actor=actor.email,
     )
+    get_audit_service().write(
+        actor=actor.email,
+        entity="user",
+        action="create",
+        target=email,
+        details={"role": row.role, "is_active": row.is_active},
+    )
     return _to_out(row)
 
 
@@ -60,6 +68,13 @@ def update_user(
         ),
         actor=actor.email,
     )
+    get_audit_service().write(
+        actor=actor.email,
+        entity="user",
+        action="update",
+        target=existing.email,
+        details={"role": row.role, "is_active": row.is_active},
+    )
     return _to_out(row)
 
 
@@ -72,4 +87,10 @@ def delete_user(
     svc = get_user_service()
     if not svc.delete(email, actor=actor.email):
         raise HTTPException(404, detail="user not found")
+    get_audit_service().write(
+        actor=actor.email,
+        entity="user",
+        action="delete",
+        target=email.strip().lower(),
+    )
     return None
