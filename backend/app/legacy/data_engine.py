@@ -247,7 +247,7 @@ def build_ae_list(sf, params: dict) -> list[dict]:
         """
     try:
         result = sf.query(query)
-        return [
+        rows = [
             {
                 "Id": r["Id"],
                 "Name": r["Name"],
@@ -257,8 +257,12 @@ def build_ae_list(sf, params: dict) -> list[dict]:
             }
             for r in result.get("records", [])
         ]
-    except Exception:
-        return []
+        if not rows:
+            log.warning("build_ae_list: SF query succeeded but returned 0 users (params=%s)", params)
+        return rows
+    except Exception as exc:
+        log.exception("build_ae_list: SF query failed (params=%s): %s", params, exc)
+        raise
 
 
 def build_dashboard_dataframe(sf, params: dict, overrides: dict | None = None) -> pd.DataFrame:
@@ -376,7 +380,8 @@ def get_managers_list(sf) -> list[str]:
                 seen.add(name)
                 managers.append(name)
         return managers
-    except Exception:
+    except Exception as exc:
+        log.exception("get_managers_list: SF query failed: %s", exc)
         return []
 
 
@@ -394,5 +399,6 @@ def get_ae_names_list(sf, manager_name: str | None = None) -> list[dict]:
             {"id": r["Id"], "name": r["Name"], "email": r.get("Email", "")}
             for r in result.get("records", [])
         ]
-    except Exception:
+    except Exception as exc:
+        log.exception("get_ae_names_list: SF query failed: %s", exc)
         return []

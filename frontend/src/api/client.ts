@@ -25,8 +25,8 @@ export async function api<T>(
   if (!res.ok) {
     let detail: string | undefined;
     try {
-      const body = (await res.json()) as { error?: string };
-      detail = body.error;
+      const body = (await res.json()) as { error?: string; detail?: string };
+      detail = body.error ?? body.detail;
     } catch {
       // ignore
     }

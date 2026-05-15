@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,7 +13,9 @@ from app.services.dashboard_service import (
     fetch_dashboard,
     resolve_filter_params,
 )
-from app.services.salesforce_client import get_sf_client
+from app.services.salesforce_client import SalesforceAuthError, get_sf_client
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -36,7 +39,14 @@ def get_dashboard(
         custom_end=custom_end,
     )
     sf = get_sf_client()
-    return fetch_dashboard(sf, params, start, end)
+    try:
+        return fetch_dashboard(sf, params, start, end)
+    except SalesforceAuthError as exc:
+        log.error("Salesforce auth error: %s", exc)
+        raise HTTPException(status_code=503, detail=f"Salesforce authentication failed: {exc}")
+    except Exception as exc:
+        log.exception("Dashboard fetch failed: %s", exc)
+        raise HTTPException(status_code=503, detail=f"Salesforce query failed: {exc}")
 
 
 @router.get("/ae/{ae_id}", response_model=AEDrillDownResponse)
@@ -57,7 +67,14 @@ def get_ae_drilldown(
         custom_end=custom_end,
     )
     sf = get_sf_client()
-    result = fetch_ae_drilldown(sf, params, start, end, ae_id)
+    try:
+        result = fetch_ae_drilldown(sf, params, start, end, ae_id)
+    except SalesforceAuthError as exc:
+        log.error("Salesforce auth error: %s", exc)
+        raise HTTPException(status_code=503, detail=f"Salesforce authentication failed: {exc}")
+    except Exception as exc:
+        log.exception("AE drilldown fetch failed: %s", exc)
+        raise HTTPException(status_code=503, detail=f"Salesforce query failed: {exc}")
     if result is None:
         raise HTTPException(status_code=404, detail="AE not found")
     return result
