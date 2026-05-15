@@ -17,7 +17,7 @@ class RosterEntryOut(BaseModel):
 
 
 class SfUserResult(BaseModel):
-    id: str
+    sf_id: str
     name: str
     email: str
     manager_name: str

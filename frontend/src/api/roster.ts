@@ -14,7 +14,7 @@ export interface RosterEntry {
 }
 
 export interface SfUserResult {
-  id: string;
+  sf_id: string;
   name: string;
   email: string;
   manager_name: string;

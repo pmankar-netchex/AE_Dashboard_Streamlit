@@ -34,7 +34,7 @@ function SfUserSearch({
 
   const q = query.trim().toLowerCase();
   const visible = (all.data ?? []).filter((u) => {
-    if (alreadyAdded.has(u.id)) return false;
+    if (alreadyAdded.has(u.sf_id)) return false;
     if (!q) return true;
     return (
       u.name.toLowerCase().includes(q) ||
@@ -93,7 +93,7 @@ function SfUserSearch({
               </p>
               {visible.map((u) => (
                 <div
-                  key={u.id}
+                  key={u.sf_id}
                   className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-accent"
                 >
                   <div className="min-w-0">
@@ -107,7 +107,7 @@ function SfUserSearch({
                   <button
                     type="button"
                     onClick={() => {
-                      onAdd(u.id);
+                      onAdd(u.sf_id);
                       setQuery("");
                     }}
                     className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-accent"
