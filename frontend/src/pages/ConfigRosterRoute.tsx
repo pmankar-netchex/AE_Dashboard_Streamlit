@@ -12,7 +12,9 @@ import {
   removeFromRoster,
   searchSfUsers,
 } from "@/api/roster";
+import { isSalesforceSessionError } from "@/api/client";
 import { useReadOnly } from "@/components/auth/ReadOnlyGate";
+import { SalesforceErrorScreen } from "@/components/salesforce/SalesforceErrorScreen";
 import { cn } from "@/lib/cn";
 
 function AddAEDialog({
@@ -132,9 +134,15 @@ function AddAEDialog({
                 Loading Salesforce users…
               </div>
             ) : all.isError ? (
-              <div className="m-5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                Failed to load users: {(all.error as Error).message}
-              </div>
+              isSalesforceSessionError(all.error) ? (
+                <div className="px-3 py-3">
+                  <SalesforceErrorScreen error={all.error} />
+                </div>
+              ) : (
+                <div className="m-5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  Failed to load users: {(all.error as Error).message}
+                </div>
+              )
             ) : visible.length === 0 ? (
               <div className="px-5 py-12 text-center text-sm text-muted-foreground">
                 {q

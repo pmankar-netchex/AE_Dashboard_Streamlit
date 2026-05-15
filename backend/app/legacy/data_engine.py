@@ -19,6 +19,7 @@ from app.legacy.soql_registry import (
     SOQLEntry,
     build_query,
 )
+from app.services.salesforce_client import SalesforceAuthError
 
 
 _QUERY_ERROR_KEYWORDS = [
@@ -80,6 +81,10 @@ def fetch_column(sf, entry: SOQLEntry, params: dict, overrides: dict | None = No
         val = _run_query(sf, soql)
         log.debug("%s = %s (%.1fs)", entry.col_id, val, time.time() - t0)
         return entry.col_id, val
+    except SalesforceAuthError:
+        # Auth/session failures aren't per-column problems — bubble so the
+        # request can return a typed SF error instead of all-None columns.
+        raise
     except Exception as exc:
         if _is_query_error(exc):
             _non_retryable_failures[entry.col_id] = str(exc)
@@ -181,6 +186,8 @@ def _fetch_batch(sf, entry: SOQLEntry, soql: str, group_field: str,
         mapping = _run_batch_query(sf, soql, group_field)
         log.debug("%s batch: %d results (%.1fs)", entry.col_id, len(mapping), time.time() - t0)
         return entry.col_id, {aid: mapping.get(aid) for aid in ae_ids}
+    except SalesforceAuthError:
+        raise
     except Exception as exc:
         elapsed = time.time() - t0
         if _is_query_error(exc):

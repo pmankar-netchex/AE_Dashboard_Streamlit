@@ -10,7 +10,7 @@ from app.schemas.roster import RosterEntryOut, RosterImportResult, SfUserResult
 from app.services.audit_service import get_audit_service
 from app.services.filter_service import get_filter_service
 from app.services.roster_service import get_roster_service
-from app.services.salesforce_client import get_sf_client
+from app.services.salesforce_client import SalesforceAuthError, get_sf_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/roster", tags=["roster"])
@@ -53,6 +53,10 @@ def _fetch_sf_users(sf, *, where_extra: str = "", limit: int = 20) -> list[dict]
                 "sdr_email": sdr_r.get("Email") or "",
             })
         return out
+    except SalesforceAuthError:
+        # Surface SF auth failures so the UI can show the remediation screen
+        # instead of an empty Add-AE picker.
+        raise
     except Exception as exc:
         logger.warning("_fetch_sf_users failed: %s", exc)
         # Retry without SDR relationship traversal (field may not exist)
@@ -78,6 +82,8 @@ def _fetch_sf_users(sf, *, where_extra: str = "", limit: int = 20) -> list[dict]
                     "sdr_email": "",
                 })
             return out
+        except SalesforceAuthError:
+            raise
         except Exception as exc2:
             logger.exception("_fetch_sf_users fallback also failed: %s", exc2)
             return []

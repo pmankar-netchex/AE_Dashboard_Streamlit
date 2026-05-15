@@ -41,9 +41,10 @@ def get_dashboard(
     sf = get_sf_client()
     try:
         return fetch_dashboard(sf, params, start, end)
-    except SalesforceAuthError as exc:
-        log.error("Salesforce auth error: %s", exc)
-        raise HTTPException(status_code=503, detail=f"Salesforce authentication failed: {exc}")
+    except SalesforceAuthError:
+        # Let the global handler turn this into a typed sf_session_expired 503
+        # so the UI can show the remediation screen.
+        raise
     except Exception as exc:
         log.exception("Dashboard fetch failed: %s", exc)
         raise HTTPException(status_code=503, detail=f"Salesforce query failed: {exc}")
@@ -69,9 +70,8 @@ def get_ae_drilldown(
     sf = get_sf_client()
     try:
         result = fetch_ae_drilldown(sf, params, start, end, ae_id)
-    except SalesforceAuthError as exc:
-        log.error("Salesforce auth error: %s", exc)
-        raise HTTPException(status_code=503, detail=f"Salesforce authentication failed: {exc}")
+    except SalesforceAuthError:
+        raise
     except Exception as exc:
         log.exception("AE drilldown fetch failed: %s", exc)
         raise HTTPException(status_code=503, detail=f"Salesforce query failed: {exc}")

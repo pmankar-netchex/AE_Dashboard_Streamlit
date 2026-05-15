@@ -7,7 +7,9 @@ from httpx import Response
 
 from app.services.salesforce_client import (
     SalesforceAuthError,
+    SalesforceSessionError,
     SalesforceTokenCache,
+    SfClient,
     reset_sf_client_cache,
     reset_token_cache,
 )
@@ -144,3 +146,106 @@ def test_refresh_endpoint_requires_admin(
     get_settings.cache_clear()
     r = client.post("/api/salesforce/refresh")
     assert r.status_code == 403
+
+
+# ---- 401 retry behavior ----
+
+
+class _FakeSfFactory:
+    """Records every Salesforce(...) construction and the .query() outcome.
+
+    Lets a test simulate a stale bearer header (first instance keeps 401-ing
+    even after session_id is mutated) and confirm SfClient actually rebuilds.
+    """
+
+    def __init__(self, accept_token: str) -> None:
+        self.accept_token = accept_token
+        self.instances: list[_FakeSf] = []
+
+    def __call__(self, *, instance_url: str, session_id: str):
+        inst = _FakeSf(self, instance_url, session_id)
+        self.instances.append(inst)
+        return inst
+
+
+class _FakeSf:
+    def __init__(self, factory: _FakeSfFactory, instance_url: str, session_id: str):
+        self.factory = factory
+        self.instance_url = instance_url
+        self.session_id = session_id  # initial bearer
+        self._initial_session_id = session_id  # simulates cached self.headers
+        self.calls = 0
+
+    def query(self, soql: str) -> dict:
+        from simple_salesforce.exceptions import SalesforceExpiredSession
+
+        self.calls += 1
+        # Real simple_salesforce uses the bearer header captured at __init__,
+        # so we deliberately check _initial_session_id, not session_id.
+        if self._initial_session_id == self.factory.accept_token:
+            return {"records": [{"x": 1}], "totalSize": 1}
+        raise SalesforceExpiredSession(
+            url="https://example/", status=401, resource_name="query", content=[]
+        )
+
+
+@respx.mock
+def test_query_retries_after_401_and_rebuilds_with_new_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Two token responses: stale tok-A, then valid tok-B.
+    respx.post(TOKEN_URL).mock(
+        side_effect=[
+            Response(200, json=_token_payload("tok-A")),
+            Response(200, json=_token_payload("tok-B")),
+        ]
+    )
+    factory = _FakeSfFactory(accept_token="tok-B")
+    monkeypatch.setattr("simple_salesforce.Salesforce", factory)
+
+    client = SfClient(cache=SalesforceTokenCache())
+    result = client.query("SELECT Id FROM User")
+
+    assert result == {"records": [{"x": 1}], "totalSize": 1}
+    # Must have constructed a *new* Salesforce instance after refresh — not just
+    # mutated session_id on the stale one.
+    assert len(factory.instances) == 2
+    assert factory.instances[0]._initial_session_id == "tok-A"
+    assert factory.instances[1]._initial_session_id == "tok-B"
+
+
+@respx.mock
+def test_query_raises_session_error_when_retry_also_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    respx.post(TOKEN_URL).mock(
+        side_effect=[
+            Response(200, json=_token_payload("tok-A")),
+            Response(200, json=_token_payload("tok-B")),
+        ]
+    )
+    factory = _FakeSfFactory(accept_token="never-matches")
+    monkeypatch.setattr("simple_salesforce.Salesforce", factory)
+
+    client = SfClient(cache=SalesforceTokenCache())
+    with pytest.raises(SalesforceSessionError):
+        client.query("SELECT Id FROM User")
+
+
+# ---- Exception handler shape ----
+
+
+@respx.mock
+def test_roster_search_returns_typed_503_on_sf_session_error(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    respx.post(TOKEN_URL).mock(return_value=Response(200, json=_token_payload()))
+    factory = _FakeSfFactory(accept_token="never-matches")
+    monkeypatch.setattr("simple_salesforce.Salesforce", factory)
+
+    r = client.get("/api/roster/search")
+    assert r.status_code == 503
+    body = r.json()
+    assert body["error_code"] == "sf_session_expired"
+    assert body["instance_url"] == "https://example.my.salesforce.com"
+    assert "Expired session" in body["error"]

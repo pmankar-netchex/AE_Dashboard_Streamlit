@@ -146,6 +146,15 @@ class SalesforceAuthError(Exception):
     """Raised when client-credentials auth cannot produce a token."""
 
 
+class SalesforceSessionError(SalesforceAuthError):
+    """Raised when a freshly minted token is still rejected by Salesforce.
+
+    Distinct from SalesforceAuthError so callers can differentiate "we can't get
+    a token at all" (credentials problem) from "Salesforce won't accept our
+    token" (Connected App / integration user problem).
+    """
+
+
 @dataclass
 class SfClient:
     """Thin wrapper around simple-salesforce that retries once on 401.
@@ -157,20 +166,26 @@ class SfClient:
     cache: SalesforceTokenCache
     _sf: Any = field(default=None, init=False, repr=False)
     _last_instance: str | None = field(default=None, init=False, repr=False)
+    _last_session_id: str | None = field(default=None, init=False, repr=False)
 
     def _build(self) -> Any:
         from simple_salesforce import Salesforce  # imported lazily for tests
 
         tok = self.cache.get()
-        if self._sf is None or self._last_instance != tok.instance_url:
+        # Rebuild on session_id rotation too: simple_salesforce caches the bearer
+        # header in self.headers at __init__ time; reassigning session_id alone
+        # leaves the old Authorization header in place and the 401 loops forever.
+        if (
+            self._sf is None
+            or self._last_instance != tok.instance_url
+            or self._last_session_id != tok.access_token
+        ):
             self._sf = Salesforce(
                 instance_url=tok.instance_url,
                 session_id=tok.access_token,
             )
             self._last_instance = tok.instance_url
-        else:
-            # Refresh session id on the existing instance to pick up rotated tokens
-            self._sf.session_id = tok.access_token
+            self._last_session_id = tok.access_token
         return self._sf
 
     def query(self, soql: str) -> dict[str, Any]:
@@ -179,11 +194,14 @@ class SfClient:
         sf = self._build()
         try:
             return sf.query(soql)
-        except SalesforceExpiredSession:
+        except SalesforceExpiredSession as exc:
             logger.info("Salesforce 401 — forcing token refresh and retrying once")
             self.cache.force_refresh()
             sf = self._build()
-            return sf.query(soql)
+            try:
+                return sf.query(soql)
+            except SalesforceExpiredSession as exc2:
+                raise SalesforceSessionError(str(exc2)) from exc2
 
     def query_all(self, soql: str) -> dict[str, Any]:
         from simple_salesforce.exceptions import SalesforceExpiredSession
@@ -194,7 +212,10 @@ class SfClient:
         except SalesforceExpiredSession:
             self.cache.force_refresh()
             sf = self._build()
-            return sf.query_all(soql)
+            try:
+                return sf.query_all(soql)
+            except SalesforceExpiredSession as exc2:
+                raise SalesforceSessionError(str(exc2)) from exc2
 
 
 # ---- module-level accessors (FastAPI dependency targets) ----
