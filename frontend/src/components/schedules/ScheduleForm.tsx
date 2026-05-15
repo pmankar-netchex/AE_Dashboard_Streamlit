@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Clock } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { type Schedule, createSchedule, updateSchedule } from "@/api/schedules";
 import { useMe } from "@/hooks/useMe";
 import {
@@ -57,10 +58,12 @@ export function ScheduleForm({ initial, onClose }: Props) {
         recipients: parseRecipients(recipientsText),
         is_active: true,
       }),
-    onSuccess: () => {
+    onSuccess: (s) => {
       void qc.invalidateQueries({ queryKey: ["schedules"] });
       onClose();
+      toast.success(`Created schedule "${s.name}"`);
     },
+    onError: (err) => toast.error(`Create failed: ${(err as Error).message}`),
   });
 
   const update = useMutation({
@@ -71,10 +74,12 @@ export function ScheduleForm({ initial, onClose }: Props) {
         subject,
         recipients: parseRecipients(recipientsText),
       }),
-    onSuccess: () => {
+    onSuccess: (s) => {
       void qc.invalidateQueries({ queryKey: ["schedules"] });
       onClose();
+      toast.success(`Saved schedule "${s.name}"`);
     },
+    onError: (err) => toast.error(`Save failed: ${(err as Error).message}`),
   });
 
   const m = initial ? update : create;

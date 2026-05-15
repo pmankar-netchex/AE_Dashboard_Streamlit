@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   type Role,
   type UserRow,
@@ -35,23 +36,36 @@ export function UserList() {
   const createMut = useMutation({
     mutationFn: () =>
       createUser({ email: newEmail.trim().toLowerCase(), role: newRole, is_active: true }),
-    onSuccess: () => {
+    onSuccess: (u) => {
       setAdding(false);
       setNewEmail("");
       setNewRole("user");
       invalidate();
+      toast.success(`Added ${u.email}`);
     },
+    onError: (err) => toast.error(`Add failed: ${(err as Error).message}`),
   });
 
   const updateMut = useMutation({
     mutationFn: ({ email, body }: { email: string; body: { role?: Role; is_active?: boolean } }) =>
       updateUser(email, body),
-    onSuccess: invalidate,
+    onSuccess: (_, { email, body }) => {
+      invalidate();
+      if (body.role) toast.success(`Set ${email} to ${body.role}`);
+      else if (body.is_active !== undefined)
+        toast.success(`${body.is_active ? "Enabled" : "Disabled"} ${email}`);
+      else toast.success(`Updated ${email}`);
+    },
+    onError: (err) => toast.error(`Update failed: ${(err as Error).message}`),
   });
 
   const deleteMut = useMutation({
     mutationFn: deleteUser,
-    onSuccess: invalidate,
+    onSuccess: (_, email) => {
+      invalidate();
+      toast.success(`Removed ${email}`);
+    },
+    onError: (err) => toast.error(`Remove failed: ${(err as Error).message}`),
   });
 
   return (

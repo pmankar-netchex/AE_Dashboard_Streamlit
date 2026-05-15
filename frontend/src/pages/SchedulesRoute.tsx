@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   type Schedule,
   deleteSchedule,
@@ -43,10 +44,30 @@ function SchedulesInner() {
   const toggleActive = useMutation({
     mutationFn: (s: Schedule) =>
       updateSchedule(s.id, { is_active: !s.is_active }),
-    onSuccess: invalidate,
+    onSuccess: (s) => {
+      invalidate();
+      toast.success(`${s.is_active ? "Activated" : "Paused"} "${s.name}"`);
+    },
+    onError: (err) => toast.error(`Update failed: ${(err as Error).message}`),
   });
-  const del = useMutation({ mutationFn: deleteSchedule, onSuccess: invalidate });
-  const send = useMutation({ mutationFn: sendNow });
+  const del = useMutation({
+    mutationFn: deleteSchedule,
+    onSuccess: (_, id) => {
+      const name = data?.find((s) => s.id === id)?.name ?? "schedule";
+      invalidate();
+      toast.success(`Deleted "${name}"`);
+    },
+    onError: (err) => toast.error(`Delete failed: ${(err as Error).message}`),
+  });
+  const send = useMutation({
+    mutationFn: sendNow,
+    onSuccess: (res, id) => {
+      const name = data?.find((s) => s.id === id)?.name ?? "schedule";
+      if (res.ok) toast.success(`Sent "${name}"${res.message_id ? ` · ${res.message_id}` : ""}`);
+      else toast.error(`Send failed: ${res.error ?? "unknown error"}`);
+    },
+    onError: (err) => toast.error(`Send failed: ${(err as Error).message}`),
+  });
 
   return (
     <div className="space-y-4">
@@ -200,20 +221,6 @@ function SchedulesInner() {
         </table>
       </div>
 
-      {send.data && (
-        <div
-          className={cn(
-            "rounded-md border px-3 py-2 text-xs",
-            send.data.ok
-              ? "border-green-300 bg-green-50 text-green-900"
-              : "border-red-300 bg-red-50 text-red-900",
-          )}
-        >
-          {send.data.ok
-            ? `Sent ✓ ${send.data.message_id || "(dev mode — no SendGrid key)"}`
-            : `Send failed: ${send.data.error}`}
-        </div>
-      )}
     </div>
   );
 }

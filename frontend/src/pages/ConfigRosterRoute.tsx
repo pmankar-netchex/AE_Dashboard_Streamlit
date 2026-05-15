@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Plus, Search, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 import {
   type RosterEntry,
   type SfUserResult,
@@ -227,29 +228,37 @@ export function ConfigRosterRoute() {
     staleTime: 60_000,
   });
 
+  const invalidate = (): void => {
+    void qc.invalidateQueries({ queryKey: ["roster"] });
+    void qc.invalidateQueries({ queryKey: ["filters"] });
+  };
+
   const importMut = useMutation({
     mutationFn: importFromSf,
     onSuccess: (res) => {
-      void qc.invalidateQueries({ queryKey: ["roster"] });
-      void qc.invalidateQueries({ queryKey: ["filters"] });
-      alert(`Imported ${res.imported} AE(s) from Salesforce.`);
+      invalidate();
+      toast.success(`Imported ${res.imported} AE${res.imported === 1 ? "" : "s"} from Salesforce`);
     },
+    onError: (err) => toast.error(`Import failed: ${(err as Error).message}`),
   });
 
   const addMut = useMutation({
     mutationFn: addToRoster,
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["roster"] });
-      void qc.invalidateQueries({ queryKey: ["filters"] });
+    onSuccess: (entry) => {
+      invalidate();
+      toast.success(`Added ${entry.name} to roster`);
     },
+    onError: (err) => toast.error(`Add failed: ${(err as Error).message}`),
   });
 
   const removeMut = useMutation({
     mutationFn: removeFromRoster,
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["roster"] });
-      void qc.invalidateQueries({ queryKey: ["filters"] });
+    onSuccess: (_, sfId) => {
+      const name = entries.find((e) => e.sf_id === sfId)?.name ?? "AE";
+      invalidate();
+      toast.success(`Removed ${name} from roster`);
     },
+    onError: (err) => toast.error(`Remove failed: ${(err as Error).message}`),
   });
 
   return (
@@ -276,12 +285,6 @@ export function ConfigRosterRoute() {
         )}
       </div>
 
-      {importMut.isError && (
-        <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900">
-          Import failed: {(importMut.error as Error).message}
-        </div>
-      )}
-
       {!readOnly && (
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">Add individual AE</p>
@@ -292,11 +295,6 @@ export function ConfigRosterRoute() {
             />
             {addMut.isPending && (
               <span className="mt-2 text-xs text-muted-foreground">Adding…</span>
-            )}
-            {addMut.isError && (
-              <span className="mt-2 text-xs text-red-700">
-                {(addMut.error as Error).message}
-              </span>
             )}
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   type SoqlEntry,
   type SoqlTestResult,
@@ -74,7 +75,9 @@ export function SoqlEditor({ colId }: Props) {
       void qc.invalidateQueries({ queryKey: ["soql"] });
       void qc.invalidateQueries({ queryKey: ["soql", colId] });
       void qc.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(`Saved template for ${colId}`);
     },
+    onError: (err) => toast.error(`Save failed: ${(err as Error).message}`),
   });
 
   if (entry.isLoading || !entry.data) {

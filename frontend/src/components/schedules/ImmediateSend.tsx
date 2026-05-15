@@ -1,9 +1,9 @@
 import { useMutation } from "@tanstack/react-query";
 import { Mail, Send } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { sendOnce } from "@/api/schedules";
 import { useFilters } from "@/hooks/useFilters";
-import { cn } from "@/lib/cn";
 
 interface Props {
   /** Hide controls when caller wants read-only mode (e.g. for "user" role). */
@@ -43,10 +43,15 @@ export function ImmediateSend({ readOnly = false }: Props) {
     },
     onSuccess: (res) => {
       if (res.ok) {
+        const n = recipientsText.split(/[,\n;]/).map((x) => x.trim()).filter(Boolean).length;
         setRecipientsText("");
         setOpen(false);
+        toast.success(`Sent to ${n} recipient${n === 1 ? "" : "s"}${res.message_id ? ` · ${res.message_id}` : ""}`);
+      } else {
+        toast.error(`Send failed: ${res.error ?? "unknown error"}`);
       }
     },
+    onError: (err) => toast.error(`Send failed: ${(err as Error).message}`),
   });
 
   if (readOnly) return null;
@@ -128,18 +133,6 @@ export function ImmediateSend({ readOnly = false }: Props) {
             ? "Sending…"
             : `Send to ${recipientCount || "0"} recipient${recipientCount === 1 ? "" : "s"}`}
         </button>
-        {send.data && (
-          <span
-            className={cn(
-              "text-xs",
-              send.data.ok ? "text-green-700" : "text-red-700",
-            )}
-          >
-            {send.data.ok
-              ? `Sent ✓ ${send.data.message_id || "(dev mode — no SendGrid key)"}`
-              : `Failed: ${send.data.error}`}
-          </span>
-        )}
       </div>
     </form>
   );

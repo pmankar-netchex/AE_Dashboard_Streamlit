@@ -1,4 +1,5 @@
 import { Outlet } from "@tanstack/react-router";
+import { Toaster } from "sonner";
 import { useMe } from "@/hooks/useMe";
 import { NoAccessPage } from "@/pages/NoAccessPage";
 import { SideNav } from "./SideNav";
@@ -19,6 +20,7 @@ export function AppShell() {
       <main className="flex-1 overflow-auto p-6">
         <Outlet />
       </main>
+      <Toaster richColors closeButton position="top-right" />
     </div>
   );
 }

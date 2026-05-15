@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Circle, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import {
   type SalesforceStatus,
   type UserRoleSample,
@@ -89,6 +90,11 @@ export function SalesforceStatusCard() {
 
   const refresh = useMutation({
     mutationFn: refreshSalesforceToken,
+    onSuccess: (res) => {
+      if (res.ok) toast.success(`Salesforce token refreshed · ${res.latency_ms}ms`);
+      else toast.error(`Token refresh failed: ${res.error ?? "unknown error"}`);
+    },
+    onError: (err) => toast.error(`Token refresh failed: ${(err as Error).message}`),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ["salesforce", "status"] });
     },
