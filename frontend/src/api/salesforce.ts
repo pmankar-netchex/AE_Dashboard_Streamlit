@@ -26,3 +26,13 @@ export function refreshSalesforceToken(): Promise<SalesforceRefreshResult> {
     method: "POST",
   });
 }
+
+export interface UserRoleSample {
+  role_values: string[];
+  total_active_users: number;
+  error: string | null;
+}
+
+export function fetchUserRoles(): Promise<UserRoleSample> {
+  return api<UserRoleSample>("/api/salesforce/user-roles");
+}

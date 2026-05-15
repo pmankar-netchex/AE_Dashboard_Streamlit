@@ -18,3 +18,9 @@ class SalesforceRefreshResult(BaseModel):
     instance_url: str | None = None
     latency_ms: int | None = None
     error: str | None = None
+
+
+class SalesforceUserRoleSample(BaseModel):
+    role_values: list[str]
+    total_active_users: int
+    error: str | None = None

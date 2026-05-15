@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Circle, RefreshCw } from "lucide-react";
 import {
   type SalesforceStatus,
+  type UserRoleSample,
   fetchSalesforceStatus,
+  fetchUserRoles,
   refreshSalesforceToken,
 } from "@/api/salesforce";
 import { useReadOnly } from "@/components/auth/ReadOnlyGate";
@@ -14,6 +16,65 @@ function ageLabel(seconds: number | null | undefined): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
   return `${(seconds / 3600).toFixed(1)}h`;
+}
+
+function UserRoleDiagnostic() {
+  const { data, isLoading, refetch, isFetching } = useQuery<UserRoleSample>({
+    queryKey: ["salesforce", "user-roles"],
+    queryFn: fetchUserRoles,
+    enabled: false,
+    retry: false,
+  });
+
+  return (
+    <div className="rounded-md border border-border p-3 text-sm">
+      <div className="flex items-center justify-between">
+        <span className="font-medium text-muted-foreground">AE Role Diagnostic</span>
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          disabled={isFetching}
+          className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+        >
+          <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin")} />
+          {data ? "Re-run" : "Run check"}
+        </button>
+      </div>
+      {isLoading || isFetching ? (
+        <p className="mt-2 text-xs text-muted-foreground">Querying Salesforce…</p>
+      ) : data ? (
+        <div className="mt-2 space-y-1.5">
+          <p className="text-xs text-muted-foreground">
+            Active users in org: <strong>{data.total_active_users}</strong>
+          </p>
+          {data.error ? (
+            <p className="text-xs text-red-700">{data.error}</p>
+          ) : data.role_values.length === 0 ? (
+            <p className="text-xs text-amber-700">
+              No User_Role_Formula__c values found — field may be empty or missing.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Distinct <code>User_Role_Formula__c</code> values (first 200 users):
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {data.role_values.map((v) => (
+                  <li key={v} className="rounded bg-muted px-2 py-0.5 font-mono text-xs">
+                    {v}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Click "Run check" to see what role values exist — helps diagnose why no AEs appear.
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function SalesforceStatusCard() {
@@ -99,6 +160,8 @@ export function SalesforceStatusCard() {
           </span>
         )}
       </div>
+
+      <UserRoleDiagnostic />
     </div>
   );
 }
