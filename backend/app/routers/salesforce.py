@@ -34,6 +34,8 @@ def status(_: CurrentUser = Depends(get_current_user)) -> SalesforceStatus:
         age_seconds=s.age_seconds,
         last_error=s.last_error,
         last_success_at=s.last_success_at,
+        token_origin=s.token_origin,
+        token_origin_is_generic=s.token_origin_is_generic,
     )
 
 

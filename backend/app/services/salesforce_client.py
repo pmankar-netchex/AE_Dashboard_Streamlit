@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -40,6 +41,11 @@ class TokenStatus:
     age_seconds: float | None
     last_error: str | None = None
     last_success_at: float | None = None
+    token_origin: str | None = None
+    token_origin_is_generic: bool = False
+
+
+_GENERIC_TOKEN_HOSTS = {"login.salesforce.com", "test.salesforce.com"}
 
 
 class SalesforceTokenCache:
@@ -50,6 +56,11 @@ class SalesforceTokenCache:
         self._token: SalesforceToken | None = None
         self._last_error: str | None = None
         self._last_success_at: float | None = None
+        # Cached org My-Domain URL learned from the first token response.
+        # Subsequent mints prefer this over sf_login_url, because CC-flow
+        # tokens minted at login.salesforce.com are rejected with
+        # INVALID_SESSION_ID when used against the org's REST API.
+        self._preferred_token_origin: str | None = None
 
     def get(self) -> SalesforceToken:
         with self._lock:
@@ -69,6 +80,9 @@ class SalesforceTokenCache:
         configured = bool(s.sf_client_id and s.sf_client_secret)
         with self._lock:
             tok = self._token
+            origin = self._preferred_token_origin or s.sf_login_url
+            host = urlparse(origin).hostname or ""
+            origin_is_generic = host in _GENERIC_TOKEN_HOSTS
             if not tok:
                 return TokenStatus(
                     configured=configured,
@@ -78,6 +92,8 @@ class SalesforceTokenCache:
                     age_seconds=None,
                     last_error=self._last_error,
                     last_success_at=self._last_success_at,
+                    token_origin=origin,
+                    token_origin_is_generic=origin_is_generic,
                 )
             return TokenStatus(
                 configured=configured,
@@ -87,6 +103,8 @@ class SalesforceTokenCache:
                 age_seconds=time.time() - tok.issued_at,
                 last_error=self._last_error,
                 last_success_at=self._last_success_at,
+                token_origin=origin,
+                token_origin_is_generic=origin_is_generic,
             )
 
     # ---- internals ----
@@ -98,7 +116,14 @@ class SalesforceTokenCache:
         if not (s.sf_client_id and s.sf_client_secret):
             raise SalesforceAuthError("Salesforce credentials not configured")
 
-        url = f"{s.sf_login_url.rstrip('/')}/services/oauth2/token"
+        # CC-flow tokens minted at login.salesforce.com / test.salesforce.com
+        # are returned with the org's instance_url but get rejected with
+        # INVALID_SESSION_ID when used against that org's REST API. Always
+        # prefer the cached My-Domain origin once we've learned it; fall back
+        # to the configured sf_login_url only for the very first mint.
+        with self._lock:
+            origin = self._preferred_token_origin or s.sf_login_url
+        url = f"{origin.rstrip('/')}/services/oauth2/token"
         data = {
             "grant_type": "client_credentials",
             "client_id": s.sf_client_id,
@@ -134,10 +159,32 @@ class SalesforceTokenCache:
             issued_at=now,
             expires_at=now + DEFAULT_TOKEN_LIFETIME_SECONDS,
         )
+        # If we minted at a generic login URL but Salesforce handed back a
+        # different My-Domain instance_url, switch all subsequent mints there.
+        origin_host = urlparse(origin).hostname or ""
+        instance_host = urlparse(instance).hostname or ""
+        promoted_origin: str | None = None
+        if (
+            origin_host in _GENERIC_TOKEN_HOSTS
+            and instance_host
+            and instance_host != origin_host
+        ):
+            promoted_origin = instance
+            logger.warning(
+                "Salesforce CC token minted at %s — switching subsequent mints "
+                "to org My-Domain %s (login.salesforce.com tokens are rejected "
+                "by REST APIs with INVALID_SESSION_ID).",
+                origin,
+                instance,
+            )
         with self._lock:
             self._token = tok
             self._last_error = None
             self._last_success_at = now
+            if promoted_origin:
+                self._preferred_token_origin = promoted_origin
+            elif self._preferred_token_origin is None:
+                self._preferred_token_origin = origin
         logger.info("Salesforce token refreshed (instance=%s)", instance)
         return tok
 

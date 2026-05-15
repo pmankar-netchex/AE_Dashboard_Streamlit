@@ -11,6 +11,8 @@ class SalesforceStatus(BaseModel):
     age_seconds: float | None = None
     last_error: str | None = None
     last_success_at: float | None = None
+    token_origin: str | None = None
+    token_origin_is_generic: bool = False
 
 
 class SalesforceRefreshResult(BaseModel):

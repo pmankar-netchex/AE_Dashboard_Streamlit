@@ -237,11 +237,23 @@ export function SalesforceStatusCard() {
         <dd>OAuth 2.0 Client Credentials</dd>
         <dt className="text-muted-foreground">Instance URL</dt>
         <dd className="break-all">{data.instance_url ?? "—"}</dd>
+        <dt className="text-muted-foreground">Token origin</dt>
+        <dd className="break-all">{data.token_origin ?? "—"}</dd>
         <dt className="text-muted-foreground">Token age</dt>
         <dd>{ageLabel(data.age_seconds)}</dd>
         <dt className="text-muted-foreground">Last success</dt>
         <dd>{formatInTz(data.last_success_at, tz)}</dd>
       </dl>
+
+      {data.token_origin_is_generic && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <strong>Token minted at a generic login URL.</strong> CC-flow tokens
+          minted at <code>{data.token_origin}</code> are rejected by Salesforce
+          REST APIs with <code>INVALID_SESSION_ID</code>. Set{" "}
+          <code>SF_LOGIN_URL</code> to the org's My Domain URL
+          (e.g. <code>https://netchex.my.salesforce.com</code>) and redeploy.
+        </div>
+      )}
 
       {data.last_error && (
         <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900">

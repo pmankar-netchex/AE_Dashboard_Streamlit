@@ -34,8 +34,11 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("SF_CLIENT_SECRET", "SALESFORCE_CLIENT_SECRET"),
     )
+    # SF_LOGIN_URL is the org's My Domain URL (e.g. https://netchex.my.salesforce.com).
+    # Must NOT be login.salesforce.com / test.salesforce.com — CC-flow tokens
+    # minted there are rejected by REST APIs with INVALID_SESSION_ID.
     sf_login_url: str = Field(
-        default="https://login.salesforce.com",
+        default="https://netchex.my.salesforce.com",
         validation_alias=AliasChoices("SF_LOGIN_URL", "SALESFORCE_LOGIN_URL"),
     )
     sf_api_version: str = Field(default="v60.0", validation_alias="SF_API_VERSION")

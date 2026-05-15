@@ -8,6 +8,8 @@ export interface SalesforceStatus {
   age_seconds: number | null;
   last_error: string | null;
   last_success_at: number | null;
+  token_origin: string | null;
+  token_origin_is_generic: boolean;
 }
 
 export interface SalesforceRefreshResult {

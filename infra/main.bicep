@@ -38,8 +38,8 @@ param sendgridFromEmail string = 'dashboard@example.com'
 @description('Comma-separated bootstrap admin emails.')
 param bootstrapAdminEmails string = ''
 
-@description('Salesforce login URL (e.g. https://netchex.my.salesforce.com).')
-param sfLoginUrl string = 'https://login.salesforce.com'
+@description('Salesforce org My Domain URL (e.g. https://netchex.my.salesforce.com). Must NOT be login.salesforce.com — CC-flow tokens minted there are rejected by REST APIs with INVALID_SESSION_ID.')
+param sfLoginUrl string = 'https://netchex.my.salesforce.com'
 
 @description('Scheduler timezone.')
 param schedulerTz string = 'America/Chicago'

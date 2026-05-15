@@ -15,14 +15,15 @@ from app.services.salesforce_client import (
 )
 
 
-TOKEN_URL = "https://login.salesforce.com/services/oauth2/token"
+TOKEN_URL = "https://example.my.salesforce.com/services/oauth2/token"
+GENERIC_TOKEN_URL = "https://login.salesforce.com/services/oauth2/token"
 
 
 @pytest.fixture(autouse=True)
 def _sf_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SF_CLIENT_ID", "id-1")
     monkeypatch.setenv("SF_CLIENT_SECRET", "secret-1")
-    monkeypatch.setenv("SF_LOGIN_URL", "https://login.salesforce.com")
+    monkeypatch.setenv("SF_LOGIN_URL", "https://example.my.salesforce.com")
     from app.config import get_settings
 
     get_settings.cache_clear()
@@ -96,6 +97,56 @@ def test_token_cache_records_last_error_on_bad_response() -> None:
     s = cache.status()
     assert s.last_error is not None
     assert "400" in s.last_error
+
+
+@respx.mock
+def test_token_origin_auto_promotes_from_login_to_my_domain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If SF_LOGIN_URL is the generic login host, the first mint goes there,
+    but subsequent mints must use the org's My-Domain instance_url because
+    login.salesforce.com tokens are rejected by REST with INVALID_SESSION_ID.
+    """
+    monkeypatch.setenv("SF_LOGIN_URL", "https://login.salesforce.com")
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+
+    generic = respx.post(GENERIC_TOKEN_URL).mock(
+        return_value=Response(200, json=_token_payload("tok-A"))
+    )
+    my_domain = respx.post(TOKEN_URL).mock(
+        return_value=Response(200, json=_token_payload("tok-B"))
+    )
+
+    cache = SalesforceTokenCache()
+    cache.get()  # first mint via login.salesforce.com
+    assert generic.call_count == 1
+    assert my_domain.call_count == 0
+
+    # Status should reflect that we've now learned the org's My Domain.
+    s = cache.status()
+    assert s.token_origin == "https://example.my.salesforce.com"
+    assert s.token_origin_is_generic is False
+
+    cache.force_refresh()  # next mint must hit My Domain, NOT login.*
+    assert generic.call_count == 1
+    assert my_domain.call_count == 1
+
+
+@respx.mock
+def test_token_origin_stays_on_my_domain_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default config (My Domain URL) should mint directly there from the start."""
+    respx.post(TOKEN_URL).mock(return_value=Response(200, json=_token_payload()))
+    generic = respx.post(GENERIC_TOKEN_URL).mock(return_value=Response(500))
+
+    cache = SalesforceTokenCache()
+    cache.get()
+    cache.force_refresh()
+    # Never touch login.salesforce.com when SF_LOGIN_URL is already My Domain.
+    assert generic.call_count == 0
 
 
 # ---- Router tests ----
