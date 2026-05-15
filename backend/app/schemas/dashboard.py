@@ -53,6 +53,8 @@ class AEDrillDownResponse(BaseModel):
     ae_name: str
     ae_email: str
     ae_manager: str
+    sdr_name: str
+    sdr_email: str
     values: dict[str, float | None]
     all_source_summary: AllSourceSummaryRow
     kpi_row_1: list[KpiValue]

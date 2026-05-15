@@ -26,10 +26,19 @@ export function AEDrillDownDrawer() {
               <Dialog.Title className="text-base font-semibold">
                 {detail.data?.ae_name ?? "Loading…"}
               </Dialog.Title>
-              <Dialog.Description className="text-xs text-muted-foreground">
-                {detail.data
-                  ? `Manager: ${detail.data.ae_manager || "—"} • ${detail.data.ae_email}`
-                  : "Fetching AE detail"}
+              <Dialog.Description asChild>
+                <div className="text-xs text-muted-foreground">
+                  {detail.data ? (
+                    <>
+                      <div>
+                        Manager: {detail.data.ae_manager || "—"} • {detail.data.ae_email}
+                      </div>
+                      <div>SDR: {detail.data.sdr_name || "—"}</div>
+                    </>
+                  ) : (
+                    "Fetching AE detail"
+                  )}
+                </div>
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>

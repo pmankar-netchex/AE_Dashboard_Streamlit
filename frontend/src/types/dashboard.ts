@@ -86,6 +86,8 @@ export interface AEDrillDownResponse {
   ae_name: string;
   ae_email: string;
   ae_manager: string;
+  sdr_name: string;
+  sdr_email: string;
   values: Record<string, number | null>;
   all_source_summary: AllSourceSummaryRow;
   kpi_row_1: KpiValue[];

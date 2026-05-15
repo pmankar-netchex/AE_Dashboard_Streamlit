@@ -26,6 +26,7 @@ from app.services.column_meta import (
     TOTAL_BOOKINGS_COL,
     format_hint,
 )
+from app.services.roster_service import get_roster_service
 
 logger = logging.getLogger(__name__)
 
@@ -180,11 +181,16 @@ def fetch_ae_drilldown(
         return None
     row = full.rows[0]
     summary = full.all_source_summary[0]
+    roster_entry = get_roster_service().get(row.ae_id)
+    sdr_name = roster_entry.sdr_name if roster_entry else ""
+    sdr_email = roster_entry.sdr_email if roster_entry else ""
     return AEDrillDownResponse(
         ae_id=row.ae_id,
         ae_name=row.ae_name,
         ae_email=row.ae_email,
         ae_manager=row.ae_manager,
+        sdr_name=sdr_name,
+        sdr_email=sdr_email,
         values=row.values,
         all_source_summary=summary,
         kpi_row_1=full.kpi_row_1,
