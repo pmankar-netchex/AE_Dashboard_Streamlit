@@ -104,7 +104,7 @@ def search_sf_users(
             limit=50,
         )
     else:
-        users = _fetch_sf_users(sf, limit=200)
+        users = _fetch_sf_users(sf, limit=400)
     return [SfUserResult(**u) for u in users]
 
 
