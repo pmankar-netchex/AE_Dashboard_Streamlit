@@ -217,8 +217,30 @@ def resolve_sdr_user_id(sf, ae_user_id: str) -> str:
 def build_ae_list(sf, params: dict) -> list[dict]:
     """
     Get the list of AEs to display based on manager/ae_user_id filter.
+    Uses the persisted roster when populated; falls back to a live SF query.
     Returns list of {Id, Name, Email, Manager, SdrId} dicts.
     """
+    from app.services.roster_service import get_roster_service
+    roster = get_roster_service()
+    if not roster.is_empty():
+        entries = roster.list()
+        if params.get("ae_user_id"):
+            entries = [e for e in entries if e.sf_id == params["ae_user_id"]]
+        elif params.get("manager_name"):
+            entries = [e for e in entries if e.manager_name == params["manager_name"]]
+        return [
+            {
+                "Id": e.sf_id,
+                "Name": e.name,
+                "Email": e.email,
+                "Manager": e.manager_name,
+                "SdrId": e.sdr_id or _NULL_ID_SENTINEL,
+            }
+            for e in entries
+        ]
+
+    # Roster empty — fall back to live SF query
+    log.info("build_ae_list: roster empty, querying SF directly")
     if params.get("ae_user_id"):
         query = f"""
             SELECT Id, Name, Email, Manager.Name, Assigned_SDR_Outbound__c
@@ -359,6 +381,18 @@ def build_dashboard_dataframe(sf, params: dict, overrides: dict | None = None) -
 
 def get_managers_list(sf) -> list[str]:
     """Get distinct manager names for the Manager filter."""
+    from app.services.roster_service import get_roster_service
+    roster = get_roster_service()
+    if not roster.is_empty():
+        entries = roster.list()
+        seen: set[str] = set()
+        managers: list[str] = []
+        for e in entries:
+            if e.manager_name and e.manager_name not in seen:
+                seen.add(e.manager_name)
+                managers.append(e.manager_name)
+        return sorted(managers)
+
     try:
         result = sf.query("""
             SELECT Id, Manager.Name
@@ -387,6 +421,14 @@ def get_managers_list(sf) -> list[str]:
 
 def get_ae_names_list(sf, manager_name: str | None = None) -> list[dict]:
     """Get AE names (optionally filtered by manager) for the AE Name filter."""
+    from app.services.roster_service import get_roster_service
+    roster = get_roster_service()
+    if not roster.is_empty():
+        entries = roster.list()
+        if manager_name:
+            entries = [e for e in entries if e.manager_name == manager_name]
+        return [{"id": e.sf_id, "name": e.name, "email": e.email} for e in entries]
+
     where = ("WHERE IsActive = true"
              " AND User_Role_Formula__c LIKE '%Sales Rep%'"
              " AND (NOT User_Role_Formula__c LIKE '%SDR%')"

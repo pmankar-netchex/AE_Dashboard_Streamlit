@@ -109,6 +109,11 @@ const configUsersRoute = createRoute({
   path: "users",
 }).lazy(() => import("@/pages/ConfigUsersRoute.lazy").then((m) => m.Route));
 
+const configRosterRoute = createRoute({
+  getParentRoute: () => configRoute,
+  path: "roster",
+}).lazy(() => import("@/pages/ConfigRosterRoute.lazy").then((m) => m.Route));
+
 const auditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/audit",
@@ -129,6 +134,7 @@ const routeTree = rootRoute.addChildren([
     configSoqlRoute,
     configSalesforceRoute,
     configUsersRoute,
+    configRosterRoute,
   ]),
   auditRoute,
 ]);

@@ -15,6 +15,7 @@ from app.routers import (
     filters,
     health,
     me,
+    roster,
     salesforce,
     schedules,
     soql,
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(me.router)
     app.include_router(salesforce.router)
+    app.include_router(roster.router)
     app.include_router(columns.router)
     app.include_router(filters.router)
     app.include_router(dashboard.router)

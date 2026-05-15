@@ -1,5 +1,6 @@
+import { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import { useAes } from "@/hooks/useDashboard";
 import { useFilters } from "@/hooks/useFilters";
 import { cn } from "@/lib/cn";
@@ -8,7 +9,11 @@ export function AEMultiSelect() {
   const { filters, set } = useFilters();
   const { data, isLoading } = useAes(filters.manager);
   const aes = data ?? [];
+  const [search, setSearch] = useState("");
   const selectedSet = new Set(filters.aeIds);
+  const visible = search
+    ? aes.filter((ae) => ae.name.toLowerCase().includes(search.toLowerCase()))
+    : aes;
   const toggle = (id: string): void => {
     const next = selectedSet.has(id)
       ? filters.aeIds.filter((x) => x !== id)
@@ -39,10 +44,26 @@ export function AEMultiSelect() {
         <Popover.Portal>
           <Popover.Content
             sideOffset={4}
-            className="z-50 max-h-72 w-80 overflow-auto rounded-md border border-border bg-background p-1 shadow-lg"
+            className="z-50 w-80 rounded-md border border-border bg-background p-1 shadow-lg"
           >
+            <div className="flex items-center gap-1 border-b border-border px-2 pb-1">
+              <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search AEs…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-7 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch("")}>
+                  <X className="h-3 w-3 text-muted-foreground" />
+                </button>
+              )}
+            </div>
+            <div className="max-h-64 overflow-y-auto">
             <div className="flex items-center justify-between px-2 py-1 text-xs text-muted-foreground">
-              <span>{aes.length} active AE(s)</span>
+              <span>{visible.length}{search ? ` of ${aes.length}` : ""} AE(s)</span>
               {filters.aeIds.length > 0 && (
                 <button
                   type="button"
@@ -53,7 +74,7 @@ export function AEMultiSelect() {
                 </button>
               )}
             </div>
-            {aes.map((ae) => {
+            {visible.map((ae) => {
               const checked = selectedSet.has(ae.id);
               return (
                 <button
@@ -78,6 +99,7 @@ export function AEMultiSelect() {
                 </button>
               );
             })}
+            </div>
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>

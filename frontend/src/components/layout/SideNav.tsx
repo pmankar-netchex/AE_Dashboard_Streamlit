@@ -39,6 +39,7 @@ const CONFIG_SUBNAV: Entry[] = [
   { to: "/config/soql", label: "SOQL Management" },
   { to: "/config/salesforce", label: "Salesforce Connection" },
   { to: "/config/users", label: "User Management" },
+  { to: "/config/roster", label: "AE Roster" },
 ];
 
 // "Operations" group — what users do day-to-day.

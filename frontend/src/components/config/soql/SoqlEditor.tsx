@@ -33,6 +33,7 @@ export function SoqlEditor({ colId }: Props) {
 
   const [draft, setDraft] = useState<string>("");
   const [testAeId, setTestAeId] = useState<string | null>(null);
+  const [aeSearch, setAeSearch] = useState<string>("");
   const [lastTestedDraft, setLastTestedDraft] = useState<string>("");
   const [testResult, setTestResult] = useState<SoqlTestResult | null>(null);
 
@@ -125,18 +126,31 @@ export function SoqlEditor({ colId }: Props) {
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <label className="flex items-center gap-1">
           <span className="text-muted-foreground">Test as AE:</span>
-          <select
-            className="h-7 rounded-md border border-border bg-background px-1"
-            value={testAeId ?? ""}
-            onChange={(ev) => setTestAeId(ev.target.value || null)}
-          >
-            <option value="">(none — aggregate over all)</option>
+          <input
+            list="soql-ae-options"
+            className="h-7 w-52 rounded-md border border-border bg-background px-1 text-xs"
+            placeholder="(aggregate over all)"
+            value={aeSearch}
+            onChange={(ev) => {
+              setAeSearch(ev.target.value);
+              const found = aeOptions.find((a) => a.name === ev.target.value);
+              setTestAeId(found?.id ?? null);
+            }}
+          />
+          {aeSearch && (
+            <button
+              type="button"
+              onClick={() => { setAeSearch(""); setTestAeId(null); }}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              ×
+            </button>
+          )}
+          <datalist id="soql-ae-options">
             {aeOptions.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
+              <option key={a.id} value={a.name} />
             ))}
-          </select>
+          </datalist>
         </label>
         <button
           type="button"
