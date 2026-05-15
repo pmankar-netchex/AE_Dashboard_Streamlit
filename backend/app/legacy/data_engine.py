@@ -217,74 +217,25 @@ def resolve_sdr_user_id(sf, ae_user_id: str) -> str:
 def build_ae_list(sf, params: dict) -> list[dict]:
     """
     Get the list of AEs to display based on manager/ae_user_id filter.
-    Uses the persisted roster when populated; falls back to a live SF query.
+    Sourced exclusively from the persisted roster (Config > AE Roster).
     Returns list of {Id, Name, Email, Manager, SdrId} dicts.
     """
     from app.services.roster_service import get_roster_service
-    roster = get_roster_service()
-    if not roster.is_empty():
-        entries = roster.list()
-        if params.get("ae_user_id"):
-            entries = [e for e in entries if e.sf_id == params["ae_user_id"]]
-        elif params.get("manager_name"):
-            entries = [e for e in entries if e.manager_name == params["manager_name"]]
-        return [
-            {
-                "Id": e.sf_id,
-                "Name": e.name,
-                "Email": e.email,
-                "Manager": e.manager_name,
-                "SdrId": e.sdr_id or _NULL_ID_SENTINEL,
-            }
-            for e in entries
-        ]
-
-    # Roster empty — fall back to live SF query
-    log.info("build_ae_list: roster empty, querying SF directly")
+    entries = get_roster_service().list()
     if params.get("ae_user_id"):
-        query = f"""
-            SELECT Id, Name, Email, Manager.Name, Assigned_SDR_Outbound__c
-            FROM User
-            WHERE Id = '{params["ae_user_id"]}'
-            AND IsActive = true
-        """
+        entries = [e for e in entries if e.sf_id == params["ae_user_id"]]
     elif params.get("manager_name"):
-        query = f"""
-            SELECT Id, Name, Email, Manager.Name, Assigned_SDR_Outbound__c
-            FROM User
-            WHERE Manager.Name = '{params["manager_name"]}'
-            AND IsActive = true
-            ORDER BY Name
-        """
-    else:
-        query = """
-            SELECT Id, Name, Email, Manager.Name, Assigned_SDR_Outbound__c
-            FROM User
-            WHERE IsActive = true
-            AND User_Role_Formula__c LIKE '%Sales Rep%'
-            AND (NOT User_Role_Formula__c LIKE '%SDR%')
-            AND (NOT User_Role_Formula__c LIKE '%Account%')
-            ORDER BY Name
-            LIMIT 200
-        """
-    try:
-        result = sf.query(query)
-        rows = [
-            {
-                "Id": r["Id"],
-                "Name": r["Name"],
-                "Email": r.get("Email", ""),
-                "Manager": (r.get("Manager") or {}).get("Name", ""),
-                "SdrId": r.get("Assigned_SDR_Outbound__c") or _NULL_ID_SENTINEL,
-            }
-            for r in result.get("records", [])
-        ]
-        if not rows:
-            log.warning("build_ae_list: SF query succeeded but returned 0 users (params=%s)", params)
-        return rows
-    except Exception as exc:
-        log.exception("build_ae_list: SF query failed (params=%s): %s", params, exc)
-        raise
+        entries = [e for e in entries if e.manager_name == params["manager_name"]]
+    return [
+        {
+            "Id": e.sf_id,
+            "Name": e.name,
+            "Email": e.email,
+            "Manager": e.manager_name,
+            "SdrId": e.sdr_id or _NULL_ID_SENTINEL,
+        }
+        for e in entries
+    ]
 
 
 def build_dashboard_dataframe(sf, params: dict, overrides: dict | None = None) -> pd.DataFrame:
@@ -380,67 +331,22 @@ def build_dashboard_dataframe(sf, params: dict, overrides: dict | None = None) -
 
 
 def get_managers_list(sf) -> list[str]:
-    """Get distinct manager names for the Manager filter."""
+    """Get distinct manager names for the Manager filter — sourced from roster."""
     from app.services.roster_service import get_roster_service
-    roster = get_roster_service()
-    if not roster.is_empty():
-        entries = roster.list()
-        seen: set[str] = set()
-        managers: list[str] = []
-        for e in entries:
-            if e.manager_name and e.manager_name not in seen:
-                seen.add(e.manager_name)
-                managers.append(e.manager_name)
-        return sorted(managers)
-
-    try:
-        result = sf.query("""
-            SELECT Id, Manager.Name
-            FROM User
-            WHERE IsActive = true
-            AND ManagerId != null
-            AND User_Role_Formula__c LIKE '%Sales Rep%'
-            AND (NOT User_Role_Formula__c LIKE '%SDR%')
-            AND (NOT User_Role_Formula__c LIKE '%Account%')
-            ORDER BY Manager.Name
-            LIMIT 500
-        """)
-        seen = set()
-        managers = []
-        for r in result.get("records", []):
-            manager_obj = r.get("Manager")
-            name = manager_obj.get("Name") if isinstance(manager_obj, dict) else None
-            if name and name not in seen:
-                seen.add(name)
-                managers.append(name)
-        return managers
-    except Exception as exc:
-        log.exception("get_managers_list: SF query failed: %s", exc)
-        return []
+    entries = get_roster_service().list()
+    seen: set[str] = set()
+    managers: list[str] = []
+    for e in entries:
+        if e.manager_name and e.manager_name not in seen:
+            seen.add(e.manager_name)
+            managers.append(e.manager_name)
+    return sorted(managers)
 
 
 def get_ae_names_list(sf, manager_name: str | None = None) -> list[dict]:
-    """Get AE names (optionally filtered by manager) for the AE Name filter."""
+    """Get AE names (optionally filtered by manager) — sourced from roster."""
     from app.services.roster_service import get_roster_service
-    roster = get_roster_service()
-    if not roster.is_empty():
-        entries = roster.list()
-        if manager_name:
-            entries = [e for e in entries if e.manager_name == manager_name]
-        return [{"id": e.sf_id, "name": e.name, "email": e.email} for e in entries]
-
-    where = ("WHERE IsActive = true"
-             " AND User_Role_Formula__c LIKE '%Sales Rep%'"
-             " AND (NOT User_Role_Formula__c LIKE '%SDR%')"
-             " AND (NOT User_Role_Formula__c LIKE '%Account%')")
+    entries = get_roster_service().list()
     if manager_name:
-        where += f" AND Manager.Name = '{manager_name}'"
-    try:
-        result = sf.query(f"SELECT Id, Name, Email FROM User {where} ORDER BY Name LIMIT 200")
-        return [
-            {"id": r["Id"], "name": r["Name"], "email": r.get("Email", "")}
-            for r in result.get("records", [])
-        ]
-    except Exception as exc:
-        log.exception("get_ae_names_list: SF query failed: %s", exc)
-        return []
+        entries = [e for e in entries if e.manager_name == manager_name]
+    return [{"id": e.sf_id, "name": e.name, "email": e.email} for e in entries]

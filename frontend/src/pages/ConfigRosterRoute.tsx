@@ -13,26 +13,33 @@ import {
 import { useReadOnly } from "@/components/auth/ReadOnlyGate";
 import { cn } from "@/lib/cn";
 
-function useDebounce<T>(value: T, ms: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return debounced;
-}
-
-function SfUserSearch({ onAdd }: { onAdd: (id: string) => void }) {
+function SfUserSearch({
+  onAdd,
+  alreadyAdded,
+}: {
+  onAdd: (id: string) => void;
+  alreadyAdded: Set<string>;
+}) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const debouncedQ = useDebounce(query, 300);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const results = useQuery<SfUserResult[]>({
-    queryKey: ["roster", "search", debouncedQ],
-    queryFn: () => searchSfUsers(debouncedQ),
-    enabled: debouncedQ.length >= 2,
-    staleTime: 30_000,
+  // Pre-fetch the full active-user list once and filter client-side.
+  const all = useQuery<SfUserResult[]>({
+    queryKey: ["roster", "search-all"],
+    queryFn: () => searchSfUsers(""),
+    enabled: open,
+    staleTime: 5 * 60_000,
+  });
+
+  const q = query.trim().toLowerCase();
+  const visible = (all.data ?? []).filter((u) => {
+    if (alreadyAdded.has(u.id)) return false;
+    if (!q) return true;
+    return (
+      u.name.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q)
+    );
   });
 
   useEffect(() => {
@@ -51,7 +58,7 @@ function SfUserSearch({ onAdd }: { onAdd: (id: string) => void }) {
         <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
         <input
           type="text"
-          placeholder="Search Salesforce users by name or email…"
+          placeholder="Search active Salesforce users by name or email…"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -61,45 +68,55 @@ function SfUserSearch({ onAdd }: { onAdd: (id: string) => void }) {
           className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
         {query && (
-          <button type="button" onClick={() => { setQuery(""); setOpen(false); }}>
+          <button type="button" onClick={() => setQuery("")}>
             <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
           </button>
         )}
       </div>
 
-      {open && debouncedQ.length >= 2 && (
+      {open && (
         <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-md border border-border bg-background shadow-lg">
-          {results.isLoading ? (
-            <p className="px-3 py-2 text-sm text-muted-foreground">Searching Salesforce…</p>
-          ) : results.data?.length === 0 ? (
-            <p className="px-3 py-2 text-sm text-muted-foreground">No users found</p>
+          {all.isLoading ? (
+            <p className="px-3 py-2 text-sm text-muted-foreground">Loading Salesforce users…</p>
+          ) : all.isError ? (
+            <p className="px-3 py-2 text-sm text-red-700">
+              Failed to load users: {(all.error as Error).message}
+            </p>
+          ) : visible.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-muted-foreground">
+              {q ? "No matching users" : "No users available"}
+            </p>
           ) : (
-            results.data?.map((u) => (
-              <div
-                key={u.id}
-                className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-accent"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{u.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {u.email}
-                    {u.manager_name ? ` · Manager: ${u.manager_name}` : ""}
-                    {u.sdr_name ? ` · SDR: ${u.sdr_name}` : ""}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onAdd(u.id);
-                    setQuery("");
-                    setOpen(false);
-                  }}
-                  className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-accent"
+            <>
+              <p className="border-b border-border px-3 py-1 text-xs text-muted-foreground">
+                {visible.length}{q ? ` of ${(all.data ?? []).length}` : ""} user(s)
+              </p>
+              {visible.map((u) => (
+                <div
+                  key={u.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-accent"
                 >
-                  <Plus className="h-3 w-3" /> Add
-                </button>
-              </div>
-            ))
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{u.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {u.email}
+                      {u.manager_name ? ` · Manager: ${u.manager_name}` : ""}
+                      {u.sdr_name ? ` · SDR: ${u.sdr_name}` : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onAdd(u.id);
+                      setQuery("");
+                    }}
+                    className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-accent"
+                  >
+                    <Plus className="h-3 w-3" /> Add
+                  </button>
+                </div>
+              ))}
+            </>
           )}
         </div>
       )}
@@ -269,7 +286,10 @@ export function ConfigRosterRoute() {
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">Add individual AE</p>
           <div className="flex items-start gap-2">
-            <SfUserSearch onAdd={(id) => addMut.mutate(id)} />
+            <SfUserSearch
+              onAdd={(id) => addMut.mutate(id)}
+              alreadyAdded={new Set(entries.map((e) => e.sf_id))}
+            />
             {addMut.isPending && (
               <span className="mt-2 text-xs text-muted-foreground">Adding…</span>
             )}

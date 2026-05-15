@@ -90,16 +90,21 @@ def list_roster(_: CurrentUser = Depends(get_current_user)) -> list[RosterEntryO
 
 @router.get("/search", response_model=list[SfUserResult])
 def search_sf_users(
-    q: str = Query(min_length=2),
+    q: str | None = Query(default=None),
     _: CurrentUser = Depends(require_admin),
 ) -> list[SfUserResult]:
+    """List active SF users. With q (>=2 chars), filters by name/email server-side;
+    otherwise returns up to 200 active users for client-side filtering."""
     sf = get_sf_client()
-    q_safe = q.replace("'", "\\'")
-    users = _fetch_sf_users(
-        sf,
-        where_extra=f"(Name LIKE '%{q_safe}%' OR Email LIKE '%{q_safe}%')",
-        limit=20,
-    )
+    if q and len(q) >= 2:
+        q_safe = q.replace("'", "\\'")
+        users = _fetch_sf_users(
+            sf,
+            where_extra=f"(Name LIKE '%{q_safe}%' OR Email LIKE '%{q_safe}%')",
+            limit=50,
+        )
+    else:
+        users = _fetch_sf_users(sf, limit=200)
     return [SfUserResult(**u) for u in users]
 
 
