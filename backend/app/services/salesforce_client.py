@@ -142,6 +142,67 @@ class SalesforceTokenCache:
         return tok
 
 
+def probe_userinfo(cache: "SalesforceTokenCache") -> dict[str, Any]:
+    """Hit /services/oauth2/userinfo with the cached token.
+
+    This is the cheapest way to tell "did the token actually authenticate"
+    apart from "did the token endpoint return 200" — they differ when a
+    Connected App's Run-As user is missing or inactive. Returns a dict with
+    {ok, status_code, latency_ms, identity fields..., error}. Never raises;
+    failures are reported in the dict so the caller can render them.
+    """
+    t0 = time.time()
+    try:
+        tok = cache.get()
+    except SalesforceAuthError as exc:
+        return {
+            "ok": False,
+            "status_code": None,
+            "latency_ms": int((time.time() - t0) * 1000),
+            "error": f"token mint failed: {exc}",
+        }
+
+    url = f"{tok.instance_url.rstrip('/')}/services/oauth2/userinfo"
+    try:
+        resp = httpx.get(
+            url,
+            headers={"Authorization": f"Bearer {tok.access_token}"},
+            timeout=10.0,
+        )
+    except httpx.HTTPError as exc:
+        return {
+            "ok": False,
+            "status_code": None,
+            "instance_url": tok.instance_url,
+            "latency_ms": int((time.time() - t0) * 1000),
+            "error": f"userinfo request failed: {exc}",
+        }
+
+    latency_ms = int((time.time() - t0) * 1000)
+    if resp.status_code != 200:
+        return {
+            "ok": False,
+            "status_code": resp.status_code,
+            "instance_url": tok.instance_url,
+            "latency_ms": latency_ms,
+            "error": f"userinfo status {resp.status_code}: {resp.text[:200]}",
+        }
+
+    body = resp.json()
+    return {
+        "ok": True,
+        "status_code": 200,
+        "instance_url": tok.instance_url,
+        "latency_ms": latency_ms,
+        "user_id": body.get("user_id"),
+        "username": body.get("preferred_username") or body.get("username"),
+        "email": body.get("email"),
+        "display_name": body.get("name"),
+        "organization_id": body.get("organization_id"),
+        "error": None,
+    }
+
+
 class SalesforceAuthError(Exception):
     """Raised when client-credentials auth cannot produce a token."""
 

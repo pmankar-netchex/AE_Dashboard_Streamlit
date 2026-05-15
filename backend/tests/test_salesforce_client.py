@@ -236,6 +236,57 @@ def test_query_raises_session_error_when_retry_also_fails(
 
 
 @respx.mock
+def test_userinfo_probe_returns_identity_when_token_valid(client: TestClient) -> None:
+    respx.post(TOKEN_URL).mock(return_value=Response(200, json=_token_payload()))
+    respx.get("https://example.my.salesforce.com/services/oauth2/userinfo").mock(
+        return_value=Response(
+            200,
+            json={
+                "user_id": "005A0000001abcd",
+                "organization_id": "00DA0000000xyz",
+                "preferred_username": "integration@example.com",
+                "email": "integration@example.com",
+                "name": "Integration User",
+            },
+        )
+    )
+    r = client.get("/api/salesforce/userinfo")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["user_id"] == "005A0000001abcd"
+    assert body["username"] == "integration@example.com"
+    assert body["organization_id"] == "00DA0000000xyz"
+    assert body["display_name"] == "Integration User"
+
+
+@respx.mock
+def test_userinfo_probe_reports_401_when_token_rejected(client: TestClient) -> None:
+    """Mint succeeds but Salesforce rejects the token — classic Run-As-user misconfig."""
+    respx.post(TOKEN_URL).mock(return_value=Response(200, json=_token_payload()))
+    respx.get("https://example.my.salesforce.com/services/oauth2/userinfo").mock(
+        return_value=Response(401, text='{"error": "invalid_session"}')
+    )
+    r = client.get("/api/salesforce/userinfo")
+    assert r.status_code == 200  # endpoint returns ok=False, not HTTP error
+    body = r.json()
+    assert body["ok"] is False
+    assert body["status_code"] == 401
+    assert "401" in body["error"]
+
+
+def test_userinfo_probe_requires_admin(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEV_ROLE", "user")
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    r = client.get("/api/salesforce/userinfo")
+    assert r.status_code == 403
+
+
+@respx.mock
 def test_roster_search_returns_typed_503_on_sf_session_error(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

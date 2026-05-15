@@ -36,3 +36,20 @@ export interface UserRoleSample {
 export function fetchUserRoles(): Promise<UserRoleSample> {
   return api<UserRoleSample>("/api/salesforce/user-roles");
 }
+
+export interface SalesforceUserInfoProbe {
+  ok: boolean;
+  status_code: number | null;
+  user_id: string | null;
+  username: string | null;
+  email: string | null;
+  display_name: string | null;
+  organization_id: string | null;
+  instance_url: string | null;
+  latency_ms: number | null;
+  error: string | null;
+}
+
+export function fetchUserInfoProbe(): Promise<SalesforceUserInfoProbe> {
+  return api<SalesforceUserInfoProbe>("/api/salesforce/userinfo");
+}

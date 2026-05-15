@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Circle, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, RefreshCw, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import {
   type SalesforceStatus,
+  type SalesforceUserInfoProbe,
   type UserRoleSample,
   fetchSalesforceStatus,
+  fetchUserInfoProbe,
   fetchUserRoles,
   refreshSalesforceToken,
 } from "@/api/salesforce";
@@ -17,6 +19,107 @@ function ageLabel(seconds: number | null | undefined): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
   return `${(seconds / 3600).toFixed(1)}h`;
+}
+
+function TokenValidityProbe({ enabled }: { enabled: boolean }) {
+  const { data, isFetching, refetch, isError, error } =
+    useQuery<SalesforceUserInfoProbe>({
+      queryKey: ["salesforce", "userinfo"],
+      queryFn: fetchUserInfoProbe,
+      enabled,
+      retry: false,
+      staleTime: 30_000,
+    });
+
+  const ok = data?.ok === true;
+  const failed = data && data.ok === false;
+
+  return (
+    <div
+      className={cn(
+        "rounded-md border p-3 text-sm",
+        ok && "border-green-300 bg-green-50/50",
+        failed && "border-red-300 bg-red-50/50",
+        !data && "border-border",
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 font-medium text-muted-foreground">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Run-As identity (token validity)
+        </div>
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          disabled={isFetching}
+          className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+        >
+          <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin")} />
+          {data ? "Re-probe" : "Probe"}
+        </button>
+      </div>
+
+      {isError ? (
+        <p className="mt-2 text-xs text-red-700">
+          {(error as Error).message ?? "Probe failed"}
+        </p>
+      ) : isFetching && !data ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Calling /services/oauth2/userinfo…
+        </p>
+      ) : ok && data ? (
+        <dl className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
+          <dt className="text-muted-foreground">User</dt>
+          <dd className="col-span-2 break-all font-medium">
+            {data.display_name ?? data.username ?? "—"}
+          </dd>
+          <dt className="text-muted-foreground">Username</dt>
+          <dd className="col-span-2 break-all">{data.username ?? "—"}</dd>
+          <dt className="text-muted-foreground">Email</dt>
+          <dd className="col-span-2 break-all">{data.email ?? "—"}</dd>
+          <dt className="text-muted-foreground">User Id</dt>
+          <dd className="col-span-2 font-mono">{data.user_id ?? "—"}</dd>
+          <dt className="text-muted-foreground">Org Id</dt>
+          <dd className="col-span-2 font-mono">{data.organization_id ?? "—"}</dd>
+          <dt className="text-muted-foreground">Latency</dt>
+          <dd className="col-span-2">{data.latency_ms}ms</dd>
+        </dl>
+      ) : failed ? (
+        <div className="mt-2 space-y-2">
+          <div className="flex items-start gap-2 text-xs text-red-800">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+            <div className="min-w-0">
+              <div className="font-medium">
+                Token minted ok but Salesforce rejected it
+                {data.status_code ? ` (HTTP ${data.status_code})` : ""}
+              </div>
+              <div className="break-words text-red-800/80">{data.error}</div>
+            </div>
+          </div>
+          <div className="rounded border border-red-200 bg-white px-2.5 py-2 text-xs text-foreground">
+            <div className="mb-1 font-medium">Likely Connected App issue:</div>
+            <ul className="list-disc space-y-0.5 pl-4 text-muted-foreground">
+              <li>
+                "Run As" user not set on the Connected App's Client Credentials
+                Flow section (Setup → App Manager → Edit → OAuth Policies)
+              </li>
+              <li>Run-As user is inactive or lost "API Enabled" permission</li>
+              <li>
+                IP login range on the user's profile blocks the API caller's
+                egress IP
+              </li>
+              <li>Connected App missing the <code>api</code> OAuth scope</li>
+            </ul>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Click Probe to confirm the cached token authenticates against
+          /oauth2/userinfo and to see which Salesforce user it represents.
+        </p>
+      )}
+    </div>
+  );
 }
 
 function UserRoleDiagnostic() {
@@ -97,6 +200,7 @@ export function SalesforceStatusCard() {
     onError: (err) => toast.error(`Token refresh failed: ${(err as Error).message}`),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ["salesforce", "status"] });
+      void qc.invalidateQueries({ queryKey: ["salesforce", "userinfo"] });
     },
   });
 
@@ -167,6 +271,7 @@ export function SalesforceStatusCard() {
         )}
       </div>
 
+      <TokenValidityProbe enabled={connected} />
       <UserRoleDiagnostic />
     </div>
   );

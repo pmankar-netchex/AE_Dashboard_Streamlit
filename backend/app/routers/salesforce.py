@@ -6,9 +6,19 @@ from fastapi import APIRouter, Depends
 
 from app.deps import get_current_user, require_admin
 from app.schemas.common import CurrentUser
-from app.schemas.salesforce import SalesforceRefreshResult, SalesforceStatus, SalesforceUserRoleSample
+from app.schemas.salesforce import (
+    SalesforceRefreshResult,
+    SalesforceStatus,
+    SalesforceUserInfoProbe,
+    SalesforceUserRoleSample,
+)
 from app.services.audit_service import get_audit_service
-from app.services.salesforce_client import SalesforceAuthError, get_sf_client, get_token_cache
+from app.services.salesforce_client import (
+    SalesforceAuthError,
+    get_sf_client,
+    get_token_cache,
+    probe_userinfo,
+)
 
 router = APIRouter(prefix="/api/salesforce", tags=["salesforce"])
 
@@ -56,6 +66,18 @@ def refresh(user: CurrentUser = Depends(require_admin)) -> SalesforceRefreshResu
             latency_ms=int((time.time() - t0) * 1000),
             error=str(exc),
         )
+
+
+@router.get("/userinfo", response_model=SalesforceUserInfoProbe)
+def userinfo_probe(
+    _: CurrentUser = Depends(require_admin),
+) -> SalesforceUserInfoProbe:
+    """Hit /services/oauth2/userinfo to verify the cached token actually
+    authenticates (separate from minting). Identifies the Connected App's
+    Run-As user — the smoking gun when CC-flow tokens mint OK but fail REST.
+    """
+    result = probe_userinfo(get_token_cache())
+    return SalesforceUserInfoProbe(**result)
 
 
 @router.get("/user-roles", response_model=SalesforceUserRoleSample)
