@@ -10,6 +10,7 @@ import logging
 
 from apscheduler.triggers.cron import CronTrigger
 
+from app.config import get_settings
 from app.scheduler import get_scheduler
 from app.scheduler.jobs import run_scheduled_report
 from app.schemas.schedules import ScheduleOut
@@ -30,19 +31,26 @@ def register_schedule(schedule: ScheduleOut) -> None:
         pass
     if not schedule.is_active or not schedule.recipients:
         return
+    tz = get_settings().scheduler_tz
     try:
-        trigger = CronTrigger.from_crontab(schedule.cron)
+        trigger = CronTrigger.from_crontab(schedule.cron, timezone=tz)
     except Exception:
         logger.exception("invalid cron for schedule %s: %s", schedule.id, schedule.cron)
         return
-    scheduler.add_job(
+    job = scheduler.add_job(
         run_scheduled_report,
         trigger=trigger,
         args=[schedule.id],
         id=job_id,
         replace_existing=True,
     )
-    logger.info("registered schedule %s with cron %s", schedule.id, schedule.cron)
+    logger.info(
+        "registered schedule %s with cron %s (tz=%s, next_run=%s)",
+        schedule.id,
+        schedule.cron,
+        tz,
+        job.next_run_time,
+    )
 
 
 def unregister_schedule(schedule_id: str) -> None:
