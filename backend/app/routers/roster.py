@@ -35,7 +35,7 @@ def _fetch_sf_users(sf, *, where_extra: str = "", limit: int = 20) -> list[dict]
                    Assigned_SDR_Outbound__r.Name,
                    Assigned_SDR_Outbound__r.Email
             FROM User
-            WHERE IsActive = true {where_clause}
+            WHERE IsActive = true AND UserType = 'Standard' {where_clause}
             LIMIT {limit}
         """)
         out = []
@@ -61,7 +61,7 @@ def _fetch_sf_users(sf, *, where_extra: str = "", limit: int = 20) -> list[dict]
                 SELECT Id, Name, Email, Manager.Name, Manager.Id,
                        Assigned_SDR_Outbound__c
                 FROM User
-                WHERE IsActive = true {where_clause}
+                WHERE IsActive = true AND UserType = 'Standard' {where_clause}
                 LIMIT {limit}
             """)
             out = []
