@@ -53,7 +53,11 @@ def get_service():
         return None
     with _service_lock:
         if _service_cache is None:
-            _service_cache = TableServiceClient.from_connection_string(conn)
+            try:
+                _service_cache = TableServiceClient.from_connection_string(conn)
+            except Exception as exc:
+                logger.error("Azure Storage connection string invalid — falling back to in-memory: %s", exc)
+                return None
     return _service_cache
 
 
